@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0b1016;
+  --color-bg-secondary: #10161f;
+  --color-bg-elevated: #171f2a;
+  --color-bg-glass: rgba(16, 22, 31, 0.82);
+
+  --color-accent: #6f9d78;
+  --color-accent-hover: #608969;
+  --color-accent-glow: rgba(111, 157, 120, 0.18);
+  --color-cyan: #8fa1b1;
+  --color-cyan-glow: rgba(143, 161, 177, 0.15);
+  --color-warning: #c99554;
+  --color-danger: #c5675d;
+
+  --color-text-primary: #edf1f5;
+  --color-text-secondary: #a8b1bc;
+  --color-text-muted: #6b7480;
+
+  --color-border: rgba(168, 177, 188, 0.12);
+  --color-border-accent: rgba(111, 157, 120, 0.2);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-full: 9999px;
+
+  --font-title: "Bahnschrift", "Aptos Display", "Trebuchet MS", sans-serif;
+  --font-body: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  font-family: var(--font-body);
+  color: var(--color-text-primary);
+  background:
+    radial-gradient(circle at top left, rgba(111, 157, 120, 0.08), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(143, 161, 177, 0.08), transparent 28%),
+    var(--color-bg-primary);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 24%);
+  z-index: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-title);
+  letter-spacing: -0.025em;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(111, 157, 120, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(111, 157, 120, 0.04);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 420ms ease-out both;
+}
+
+.animate-fade-in-up-delay-1 {
+  animation: fadeInUp 420ms ease-out 80ms both;
+}
+
+.animate-fade-in-up-delay-2 {
+  animation: fadeInUp 420ms ease-out 160ms both;
+}
+
+.animate-fade-in-up-delay-3 {
+  animation: fadeInUp 420ms ease-out 240ms both;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.8s ease-in-out infinite;
+}
