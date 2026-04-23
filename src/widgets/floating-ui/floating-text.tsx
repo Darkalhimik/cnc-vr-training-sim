@@ -17,7 +17,7 @@ export function FloatingText({ title, description, actionLabel }: FloatingTextPr
       }}
     >
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8dd9c5" }}>
-        Поточний крок
+        Current step
       </div>
       <strong style={{ display: "block", marginTop: 4, marginBottom: 6, fontSize: 19 }}>{title}</strong>
       <p style={{ margin: "0 0 10px", lineHeight: 1.45, color: "#d5e7ef" }}>{description}</p>
@@ -31,7 +31,7 @@ export function FloatingText({ title, description, actionLabel }: FloatingTextPr
           display: "inline-block",
         }}
       >
-        Дія: {actionLabel}
+        Action: {actionLabel}
       </span>
     </div>
   );

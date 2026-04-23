@@ -31,7 +31,7 @@ export function ControlPanel({ mode, tutorialOnly }: ControlPanelProps) {
       }}
     >
       <div>
-        <strong>Режим:</strong> {mode.toUpperCase()} {tutorialOnly ? "(тільки туторіал)" : ""}
+        <strong>Mode:</strong> {mode.toUpperCase()} {tutorialOnly ? "(tutorial only)" : ""}
       </div>
       <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {MODES.map((item) => {

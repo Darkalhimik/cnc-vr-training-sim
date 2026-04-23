@@ -17,12 +17,12 @@ type TutorialStore = {
 export const useTutorialState = create<TutorialStore>((set, get) => ({
   stepIndex: 0,
   machine: initialMachineState,
-  message: "Почніть з відкриття подачі повітря.",
+  message: "Start by opening the air supply.",
 
   interactWithPart: (partId) => {
     const { stepIndex, machine } = get();
     if (isTutorialComplete(stepIndex)) {
-      set({ message: "Туторіал уже завершено. Натисніть Reset для нового проходження." });
+      set({ message: "Tutorial already finished. Press Reset to start over." });
       return;
     }
 
@@ -36,7 +36,7 @@ export const useTutorialState = create<TutorialStore>((set, get) => ({
         set({
           machine: nextState,
           stepIndex: nextStepIndex,
-          message: "Підготовку машини успішно завершено.",
+          message: "Machine preparation completed successfully.",
         });
         return;
       }
@@ -44,7 +44,7 @@ export const useTutorialState = create<TutorialStore>((set, get) => ({
       set({
         machine: nextState,
         stepIndex: nextStepIndex,
-        message: `${eventMessage} Далі: ${cncTutorialSteps[nextStepIndex].title}`,
+        message: `${eventMessage} Next: ${cncTutorialSteps[nextStepIndex].title}`,
       });
       return;
     }
@@ -63,7 +63,7 @@ export const useTutorialState = create<TutorialStore>((set, get) => ({
 
     const currentStep = getStepByIndex(stepIndex);
     if (!currentStep.isComplete(machine)) {
-      set({ message: "Поточний крок ще не завершений." });
+      set({ message: "Current step is not yet completed." });
       return;
     }
 
@@ -71,14 +71,14 @@ export const useTutorialState = create<TutorialStore>((set, get) => ({
     if (nextStepIndex >= cncTutorialSteps.length) {
       set({
         stepIndex: nextStepIndex,
-        message: "Підготовку машини успішно завершено.",
+        message: "Machine preparation completed successfully.",
       });
       return;
     }
 
     set({
       stepIndex: nextStepIndex,
-      message: `Перехід до: ${cncTutorialSteps[nextStepIndex].title}`,
+      message: `Moving to: ${cncTutorialSteps[nextStepIndex].title}`,
     });
   },
 
@@ -86,7 +86,7 @@ export const useTutorialState = create<TutorialStore>((set, get) => ({
     set({
       stepIndex: 0,
       machine: initialMachineState,
-      message: "Почніть з відкриття подачі повітря.",
+      message: "Start by opening the air supply.",
     });
   },
 }));

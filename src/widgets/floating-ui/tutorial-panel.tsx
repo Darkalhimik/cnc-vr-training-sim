@@ -29,9 +29,9 @@ export function TutorialPanel({
         boxShadow: "0 12px 26px rgba(16, 42, 67, 0.1)",
       }}
     >
-      <h3 style={{ margin: "0 0 8px" }}>{completed ? "Туторіал завершено" : title}</h3>
+      <h3 style={{ margin: "0 0 8px" }}>{completed ? "Tutorial completed" : title}</h3>
       <p style={{ margin: "0 0 10px", color: "#486581" }}>
-        Крок {Math.min(stepIndex + 1, totalSteps)} / {totalSteps}
+        Step {Math.min(stepIndex + 1, totalSteps)} / {totalSteps}
       </p>
 
       <div style={{ height: 8, background: "#e4ecf2", borderRadius: 10, overflow: "hidden" }}>
@@ -59,7 +59,7 @@ export function TutorialPanel({
             cursor: "pointer",
           }}
         >
-          Наступний крок
+          Next step
         </button>
         <button
           type="button"
@@ -72,7 +72,7 @@ export function TutorialPanel({
             cursor: "pointer",
           }}
         >
-          Скинути
+          Reset
         </button>
       </div>
     </aside>

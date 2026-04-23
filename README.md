@@ -25,18 +25,18 @@ App routes:
 
 ## Tutorial steps
 
-1. Перевірка подачі повітря через задній клапан (OPEN)
-2. Натиснути зелену кнопку увімкнення
-3. E-stop: висунути кнопку та повернути за годинниковою стрілкою
-4. Перевірка дверей: якщо відкриті - закрити, якщо закриті - відкрити і закрити
-5. Handle Jog -> Diagnostics
+1. Check air supply via the rear valve (OPEN).
+2. Press the green power button.
+3. E-stop: pull the button out and rotate clockwise to release.
+4. Door check: if open, close it; if closed, open and close it again.
+5. Handle Jog -> Diagnostics.
 
 ## Modes
 
-- `desktop`: навчання з мишею/тачем
-- `vr`: WebXR VR режим
-- `ar`: WebXR AR режим для телефона
-- `tutorial`: фокусний режим лише на місії
+- `desktop`: mouse/touch training.
+- `vr`: WebXR VR mode.
+- `ar`: WebXR AR mode for mobile.
+- `tutorial`: focused mode limited to the mission.
 
 ## Model integration
 
@@ -57,16 +57,6 @@ You can use official or community CAD sources, then convert to `.glb`:
 1. Haas official resources / vendor CAD portals (if available for your license).
 2. Engineering model libraries such as TraceParts / 3D ContentCentral / GrabCAD.
 3. Exported in-house CAD (SolidWorks/STEP/OBJ) from your team.
-
-### Using SolidWorks source (`.SLDPRT`)
-
-Browser runtime cannot load `.SLDPRT` directly. Convert it to `.glb` first, then place the output at `public/models/haas-umc500.glb`.
-
-Recommended conversion flow:
-
-1. Export from SolidWorks to `.STEP` (or `.OBJ`).
-2. Import into Blender (or another converter) and clean transforms/materials.
-3. Export as `.glb` (binary glTF), then copy into `public/models/`.
 
 ## Notes
 

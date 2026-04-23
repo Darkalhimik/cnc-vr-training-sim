@@ -21,38 +21,38 @@ export function applyPartInteraction(partId: MachinePartId, state: MachineState)
       if (state.airValveOpen) {
         return {
           nextState: state,
-          eventMessage: "Подача повітря вже відкрита. Клапан у правильному положенні OPEN.",
+          eventMessage: "Air supply is already open. Valve is in the correct OPEN position.",
         };
       }
       return {
         nextState: { ...state, airValveOpen: true },
-        eventMessage: "Подачу повітря увімкнено. Положення клапана: OPEN.",
+        eventMessage: "Air supply turned on. Valve position: OPEN.",
       };
 
     case "power_button":
       if (!state.airValveOpen) {
         return {
           nextState: state,
-          eventMessage: "Спочатку відкрийте повітряний клапан.",
+          eventMessage: "Open the air valve first.",
         };
       }
       return {
         nextState: { ...state, powerOn: true },
-        eventMessage: "Система керування увімкнена.",
+        eventMessage: "Control system powered on.",
       };
 
     case "emergency_button":
       if (!state.powerOn) {
         return {
           nextState: state,
-          eventMessage: "Перед перевіркою E-stop увімкніть машину.",
+          eventMessage: "Power on the machine before checking the E-stop.",
         };
       }
 
       if (!state.emergencyExtended) {
         return {
           nextState: { ...state, emergencyExtended: true },
-          eventMessage: "E-stop висунуто. Тепер поверніть кнопку за годинниковою стрілкою.",
+          eventMessage: "E-stop pulled out. Now rotate the button clockwise.",
         };
       }
 
@@ -63,13 +63,13 @@ export function applyPartInteraction(partId: MachinePartId, state: MachineState)
             emergencyClockwise: true,
             emergencyReleased: true,
           },
-          eventMessage: "E-stop повернуто за годинниковою стрілкою та розблоковано.",
+          eventMessage: "E-stop rotated clockwise and released.",
         };
       }
 
       return {
         nextState: state,
-        eventMessage: "E-stop вже в активному (розблокованому) стані.",
+        eventMessage: "E-stop is already in the active (released) state.",
       };
 
     case "door":
@@ -80,57 +80,57 @@ export function applyPartInteraction(partId: MachinePartId, state: MachineState)
             doorOpen: false,
             doorCycleComplete: true,
           },
-          eventMessage: "Двері були відкриті. Закрито та підтверджено безпечний стан.",
+          eventMessage: "Door was open. Closed and confirmed safe state.",
         };
       }
 
       if (!state.doorOpenedOnce && !state.doorOpen) {
         return {
           nextState: { ...state, doorOpen: true, doorOpenedOnce: true },
-          eventMessage: "Двері відкрито. Закрийте їх для завершення перевірки.",
+          eventMessage: "Door opened. Close it to complete the check.",
         };
       }
 
       if (state.doorOpen) {
         return {
           nextState: { ...state, doorOpen: false, doorCycleComplete: state.doorOpenedOnce },
-          eventMessage: "Двері закрито.",
+          eventMessage: "Door closed.",
         };
       }
 
       return {
         nextState: state,
-        eventMessage: "Перевірку дверей уже завершено.",
+        eventMessage: "Door check already completed.",
       };
 
     case "handle_jog":
       if (!state.emergencyReleased) {
         return {
           nextState: state,
-          eventMessage: "Спочатку переведіть E-stop у розблокований стан.",
+          eventMessage: "Release the E-stop first.",
         };
       }
       return {
         nextState: { ...state, handleJogPressed: true },
-        eventMessage: "Handle Jog активовано. Відкрийте Diagnostics.",
+        eventMessage: "Handle Jog activated. Open Diagnostics.",
       };
 
     case "diagnostics_panel":
       if (!state.handleJogPressed) {
         return {
           nextState: state,
-          eventMessage: "Спочатку натисніть Handle Jog.",
+          eventMessage: "Press Handle Jog first.",
         };
       }
       return {
         nextState: { ...state, diagnosticsOpen: true },
-        eventMessage: "Diagnostics відкрито.",
+        eventMessage: "Diagnostics opened.",
       };
 
     default:
       return {
         nextState: state,
-        eventMessage: "Для цього елемента немає дії в поточному кроці.",
+        eventMessage: "No action for this element in the current step.",
       };
   }
 }
