@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(wsl --shutdown)",
+      "PowerShell(wsl -d Ubuntu -- bash -c 'free -g | head -3' 2>&1)",
+      "Bash(wsl -d Ubuntu -- bash -lc 'pgrep -af next 2>&1 | head -3; echo \"---ports---\"; ss -tlnp 2>&1 | grep \":3020\"; echo \"---mem---\"; free -g | head -3')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'pgrep -af next 2>&1 | head -5; echo \"---port3020---\"; ss -tln 2>&1 | grep \":3020\"; echo \"---mem---\"; free -g | head -3')",
+      "Bash(curl -s -o /tmp/wsl2.html -w \"HTTP=%{http_code} time=%{time_total}\\\\n\" http://localhost:3020/)",
+      "Bash(wsl -d Ubuntu -- bash -lc 'pgrep -af next 2>&1 | head -5; echo \"---kernel---\"; sudo dmesg 2>/dev/null | tail -10; echo \"---meminfo---\"; head -10 /proc/meminfo')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'pgrep -af next 2>&1 | head -5; echo \"---meminfo---\"; head -10 /proc/meminfo')",
+      "PowerShell(wsl -d Ubuntu -- bash -c 'echo OK; free -g | head -3' 2>&1)",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && cd /home/ogoro && rm -rf cnc-vr-training-sim && cp -r /mnt/c/Programing/Hydrolic/cnc-vr-training-sim cnc-vr-training-sim && cd cnc-vr-training-sim && rm -rf node_modules .next && du -sh . 2>&1')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'ls /home/ogoro/cnc-vr-training-sim 2>&1 | head -10; echo \"---size---\"; du -sh /home/ogoro/cnc-vr-training-sim 2>&1')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'cd /home/ogoro/cnc-vr-training-sim && rm -rf node_modules .next && ls 2>&1 | head -15; echo \"---size---\"; du -sh . 2>&1')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'rm -rf /home/ogoro/cnc-vr-training-sim/node_modules 2>&1 || sudo rm -rf /home/ogoro/cnc-vr-training-sim/node_modules; rm -rf /home/ogoro/cnc-vr-training-sim/.next; ls /home/ogoro/cnc-vr-training-sim 2>&1 | head -5')",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && cd /home/ogoro/cnc-vr-training-sim && npm install 2>&1 | tail -5 && ls node_modules | head -5')",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && cd /home/ogoro/cnc-vr-training-sim && npx next dev -p 3020 2>&1')",
+      "Bash(curl -s -o /tmp/wsl3.html -w \"HTTP=%{http_code} time=%{time_total}\\\\n\" http://localhost:3020/)",
+      "Bash(wsl -d Ubuntu -- bash -lc 'pgrep -af next 2>&1 | head -5; echo \"---meminfo---\"; head -8 /proc/meminfo; echo \"---dmesg---\"; sudo dmesg 2>/dev/null | grep -iE \"killed|oom\" | tail -10')",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && cd /home/ogoro/cnc-vr-training-sim && nohup npx next dev -p 3020 > /tmp/next.log 2>&1 & disown; sleep 3; echo \"PID: $!\"; ps -p $! -o pid,cmd 2>&1')",
+      "Bash(wsl -d Ubuntu -- bash -lc 'cd /home/ogoro/cnc-vr-training-sim && . /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && setsid nohup npx next dev -p 3020 > /tmp/next.log 2>&1 < /dev/null &')",
+      "Bash(wsl -d Ubuntu -- bash -c 'pgrep -af next | head -5; echo \"---\"; ss -tln | grep 3020')",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && cd /home/ogoro/cnc-vr-training-sim && exec npx next dev -p 3020')",
+      "Bash(curl -s -o /tmp/wsl4.html -w \"HTTP=%{http_code} time=%{time_total}\\\\n\" http://localhost:3020/)",
+      "Bash(wsl -d Ubuntu -- bash -lc '. /home/ogoro/.nvm/nvm.sh >/dev/null && nvm use default >/dev/null && cd /home/ogoro/cnc-vr-training-sim && \\(npx next dev -p 3020 > /tmp/next.log 2>&1 &\\) && echo \"started, waiting\"; for i in $\\(seq 1 60\\); do if grep -q \"Ready in\" /tmp/next.log 2>/dev/null; then echo \"READY at $i\"; break; fi; sleep 1; done; echo \"==compiling==\"; curl -s -o /tmp/d.html -w \"HTTP=%{http_code} time=%{time_total}\\\\n\" --max-time 240 http://localhost:3020/; echo \"==log_tail==\"; tail -25 /tmp/next.log')",
+      "Bash(wsl -d Ubuntu -- bash /mnt/c/Users/ogoro/AppData/Local/Temp/wsl-test.sh)",
+      "Bash(wsl -d Ubuntu -- bash -c 'cp /mnt/c/Users/ogoro/AppData/Local/Temp/wsl-test.sh ~/wsl-test.sh && chmod +x ~/wsl-test.sh && bash ~/wsl-test.sh')",
+      "Bash(wsl -d Ubuntu -- bash -c 'echo OK; free -g | head -3; nvidia-smi 2>/dev/null | head -3 || echo no-gpu')",
+      "Bash(wsl -d Ubuntu -- bash -c 'cp /mnt/c/Users/ogoro/AppData/Local/Temp/wsl-test2.sh ~/wsl-test2.sh && chmod +x ~/wsl-test2.sh && bash ~/wsl-test2.sh')",
+      "Bash(wsl -d Ubuntu -- bash -c 'pgrep -af next 2>&1 | head -5; echo \"---log_size---\"; ls -la /tmp/next.log 2>&1; echo \"---log_tail---\"; tail -25 /tmp/next.log 2>&1')",
+      "Bash(wsl -d Ubuntu -- bash -c 'uptime; ls /tmp/ 2>&1 | head -5; pgrep -af next 2>&1 | head')",
+      "PowerShell(wsl -d Ubuntu -- bash -c 'uptime; pgrep -af next' 2>&1)",
+      "PowerShell(\"---\")",
+      "PowerShell(\"---events---\")",
+      "PowerShell(Start-Process wsl -ArgumentList '-d','Ubuntu','-e','bash','-c','. /home/ogoro/.nvm/nvm.sh; nvm use default; cd /home/ogoro/cnc-vr-training-sim; exec npx next dev -p 3020 > /tmp/next.log 2>&1' -WindowStyle Hidden -PassThru)",
+      "PowerShell(wsl -d Ubuntu -- bash -c 'pgrep -af next | head -3; tail -10 /tmp/next.log 2>/dev/null' 2>&1)",
+      "Bash(wsl -d Ubuntu -- bash -c 'cp /mnt/c/Users/ogoro/AppData/Local/Temp/wsl-test3.sh ~/wsl-test3.sh && chmod +x ~/wsl-test3.sh && bash ~/wsl-test3.sh')",
+      "Bash(wsl -d Ubuntu -- bash -c 'pgrep -af next; echo \"---log---\"; tail -30 /tmp/next.log 2>/dev/null; echo \"---curl---\"; cat /tmp/curl.out 2>/dev/null; echo \"---dmesg---\"; sudo dmesg 2>/dev/null | tail -15')",
+      "Bash(wsl -d Ubuntu -- bash -c 'cp /mnt/c/Users/ogoro/AppData/Local/Temp/wsl-build.sh ~/wsl-build.sh && chmod +x ~/wsl-build.sh && bash ~/wsl-build.sh')",
+      "PowerShell(wsl --version 2>&1)",
+      "PowerShell(wsl --update --no-distribution 2>&1)",
+      "PowerShell(wsl --update 2>&1)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ogoro"
+    ]
+  }
+}
