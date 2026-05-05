@@ -22,10 +22,13 @@ const CONTROL_OFFSETS: Record<DeviceMode, [number, number, number]> = {
   ar: [-0.78, -0.12, -0.48],
 };
 
+// Coolant valve and air valve sit at fixed offsets relative to the GLB model.
+// All modes use the same anchor — the parent sceneGroupPosition handles
+// per-mode placement of the whole rig.
 const COOLANT_OFFSETS: Record<DeviceMode, [number, number, number]> = {
   desktop: [0, 0, 0],
-  vr: [-0.65, 0, -0.42],
-  ar: [-0.35, -0.12, -0.18],
+  vr: [0, 0, 0],
+  ar: [0, 0, 0],
 };
 
 export function getPartPosition(

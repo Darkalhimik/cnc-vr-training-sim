@@ -3,14 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
-  experimental: {
-    optimizePackageImports: [
-      "@react-three/drei",
-      "@react-three/fiber",
-      "@react-three/xr",
-      "three",
-      "three-stdlib",
-    ],
+  serverExternalPackages: ["three"],
+  outputFileTracingExcludes: {
+    "*": ["public/models/**"],
   },
   webpack: (config, { dev }) => {
     if (dev) {

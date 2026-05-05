@@ -90,18 +90,7 @@ export function applyInteraction(
       return { nextState: state, message: "E-Stop is already released." };
 
     case "door":
-      if (state.doorOpen && !state.doorOpenedOnce) {
-        return {
-          nextState: { ...state, doorOpen: false, doorCycleComplete: true },
-          message: "Door closed. Safety interlock verified.",
-        };
-      }
-      if (!state.doorOpenedOnce && !state.doorOpen) {
-        return {
-          nextState: { ...state, doorOpen: true, doorOpenedOnce: true },
-          message: "Door opened. Close it to complete the safety check.",
-        };
-      }
+      // Open: close immediately. Closed: open (auto-close handled in store below).
       if (state.doorOpen) {
         return {
           nextState: {
@@ -112,13 +101,10 @@ export function applyInteraction(
           message: "Door closed.",
         };
       }
-      if (!state.doorOpen && state.doorCycleComplete) {
-        return {
-          nextState: { ...state, doorOpen: true },
-          message: "Door opened.",
-        };
-      }
-      return { nextState: state, message: "Door check already complete." };
+      return {
+        nextState: { ...state, doorOpen: true, doorOpenedOnce: true },
+        message: "Door opening — will auto-close.",
+      };
 
     case "handle_jog":
       if (!state.emergencyReleased) {
@@ -202,6 +188,25 @@ export const useMachineStore = create<MachineStore>((set, get) => ({
     const { machine } = get();
     const { nextState, message } = applyInteraction(partId, machine);
     set({ machine: nextState, lastMessage: message, lastPart: partId });
+
+    // Door cycle: when a click opens the door, schedule an auto-close so a
+    // single click runs a full open-close cycle.
+    if (partId === "door" && !machine.doorOpen && nextState.doorOpen) {
+      setTimeout(() => {
+        const current = get().machine;
+        if (current.doorOpen) {
+          set({
+            machine: {
+              ...current,
+              doorOpen: false,
+              doorCycleComplete: true,
+            },
+            lastMessage: "Door closed.",
+            lastPart: "door",
+          });
+        }
+      }, 1500);
+    }
   },
 
   reset: () => {

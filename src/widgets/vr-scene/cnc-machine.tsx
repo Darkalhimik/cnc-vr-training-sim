@@ -2,13 +2,13 @@
 
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
-import { RoundedBox, Text } from "@react-three/drei";
 import { type ThreeEvent } from "@react-three/fiber";
 import type { DeviceMode, MachineState } from "@/entities/machine/machine-types";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { CoolantVoxels } from "./coolant-voxels";
 import { getPartPosition } from "./layout";
 import { ProceduralShell } from "./procedural-shell";
+import { ShellFallbackBoundary } from "./shell-fallback-boundary";
 
 const MachineShell = dynamic(
   () => import("./machine-shell").then((mod) => mod.MachineShell),
@@ -23,22 +23,8 @@ type CncMachineProps = {
   onHoverPart: (partId: MachinePartId | null) => void;
 };
 
-type ValveWheelProps = {
+type BallValveProps = {
   active: boolean;
-  highlight: boolean;
-  color: string;
-};
-
-type RoundButtonProps = {
-  label: string;
-  active: boolean;
-  highlight: boolean;
-  color: string;
-};
-
-type RectButtonProps = {
-  label: string;
-  color: string;
   highlight: boolean;
 };
 
@@ -46,100 +32,76 @@ function highlightIsOn(partId: MachinePartId, highlightedParts: MachinePartId[])
   return highlightedParts.includes(partId);
 }
 
-function ValveWheel({ active, highlight, color }: ValveWheelProps) {
+// PVC ball valve modeled after the photo: vertical white pipe with three
+// sections (top fitting, central housing bulge, bottom fitting) joined by
+// shoulder flanges, plus a red lever sticking out horizontally from the side
+// of the housing. The lever rotates around its stem axis (Z) — when open,
+// the blade is parallel to the pipe (vertical); when closed, perpendicular.
+function BallValve({ active, highlight }: BallValveProps) {
+  const pvcWhite = "#f1f2f4";
+  const pvcShade = "#dcdee2";
+  const leverIdle = "#c92418";
+  const leverHighlight = "#e8412e";
+  const leverDark = "#7a1812";
+
   return (
-    <group rotation={[Math.PI / 2, 0, active ? Math.PI / 2 : 0]}>
-      <mesh>
-        <torusGeometry args={[0.11, 0.016, 14, 28]} />
-        <meshStandardMaterial
-          color={color}
-          emissive={highlight ? color : "#000000"}
-          emissiveIntensity={highlight ? 0.22 : 0}
-          metalness={0.58}
-          roughness={0.28}
-        />
+    <group>
+      {/* Top pipe stub */}
+      <mesh position={[0, 0.34, 0]}>
+        <cylinderGeometry args={[0.075, 0.075, 0.18, 24]} />
+        <meshStandardMaterial color={pvcWhite} roughness={0.45} metalness={0.0} />
       </mesh>
-      <mesh>
-        <cylinderGeometry args={[0.03, 0.03, 0.03, 18]} />
-        <meshStandardMaterial color="#d9e2ea" metalness={0.75} roughness={0.18} />
+      {/* Top shoulder flange */}
+      <mesh position={[0, 0.235, 0]}>
+        <cylinderGeometry args={[0.092, 0.082, 0.030, 24]} />
+        <meshStandardMaterial color={pvcShade} roughness={0.5} metalness={0.0} />
       </mesh>
-      {[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map((rotation) => (
-        <mesh key={rotation} rotation={[0, 0, rotation]}>
-          <boxGeometry args={[0.16, 0.016, 0.016]} />
-          <meshStandardMaterial color="#d9e2ea" metalness={0.72} roughness={0.2} />
+      {/* Central housing (where the ball sits) */}
+      <mesh position={[0, 0.115, 0]}>
+        <cylinderGeometry args={[0.105, 0.105, 0.215, 24]} />
+        <meshStandardMaterial color={pvcWhite} roughness={0.45} metalness={0.0} />
+      </mesh>
+      {/* Bottom shoulder flange */}
+      <mesh position={[0, -0.005, 0]}>
+        <cylinderGeometry args={[0.082, 0.092, 0.030, 24]} />
+        <meshStandardMaterial color={pvcShade} roughness={0.5} metalness={0.0} />
+      </mesh>
+      {/* Bottom pipe stub */}
+      <mesh position={[0, -0.11, 0]}>
+        <cylinderGeometry args={[0.075, 0.075, 0.18, 24]} />
+        <meshStandardMaterial color={pvcWhite} roughness={0.45} metalness={0.0} />
+      </mesh>
+
+      {/* Lever assembly: anchored at side of central housing */}
+      <group position={[0, 0.115, 0.105]}>
+        {/* Stem — short cylinder protruding outward (Z axis), with rounded cap */}
+        <mesh position={[0, 0, 0.030]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.030, 0.034, 0.060, 16]} />
+          <meshStandardMaterial color={leverDark} roughness={0.5} metalness={0.0} />
         </mesh>
-      ))}
-    </group>
-  );
-}
-
-function RoundButtonControl({ label, active, highlight, color }: RoundButtonProps) {
-  return (
-    <group>
-      <mesh position={[0, 0, -0.02]}>
-        <cylinderGeometry args={[0.08, 0.08, 0.04, 24]} />
-        <meshStandardMaterial color="#17202c" roughness={0.72} metalness={0.28} />
-      </mesh>
-      <mesh position={[0, 0, 0.02]}>
-        <cylinderGeometry args={[0.056, 0.062, 0.06, 24]} />
-        <meshStandardMaterial
-          color={active ? color : "#55687d"}
-          emissive={active || highlight ? color : "#000000"}
-          emissiveIntensity={active ? 0.55 : highlight ? 0.18 : 0}
-          roughness={0.3}
-          metalness={0.1}
-        />
-      </mesh>
-      <Text position={[0, 0.12, 0.02]} fontSize={0.035} color="#e6edf5" anchorX="center" anchorY="middle">
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function RectControlButton({ label, color, highlight }: RectButtonProps) {
-  return (
-    <group>
-      <RoundedBox args={[0.18, 0.12, 0.035]} radius={0.02} position={[0, 0, -0.01]}>
-        <meshStandardMaterial color="#17202c" roughness={0.7} metalness={0.2} />
-      </RoundedBox>
-      <RoundedBox args={[0.16, 0.1, 0.05]} radius={0.018} position={[0, 0, 0.018]}>
-        <meshStandardMaterial
-          color={color}
-          emissive={highlight ? color : "#000000"}
-          emissiveIntensity={highlight ? 0.22 : 0.08}
-          roughness={0.32}
-          metalness={0.1}
-        />
-      </RoundedBox>
-      <Text position={[0, 0.13, 0.02]} fontSize={0.03} color="#eef2f7" anchorX="center" anchorY="middle">
-        {label}
-      </Text>
-    </group>
-  );
-}
-
-function ModeSelectorKnob({ highlight }: { highlight: boolean }) {
-  return (
-    <group>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.08, 0.08, 0.05, 24]} />
-        <meshStandardMaterial color="#151d28" roughness={0.72} metalness={0.22} />
-      </mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.03]}>
-        <cylinderGeometry args={[0.058, 0.062, 0.08, 24]} />
-        <meshStandardMaterial
-          color="#d6dde6"
-          emissive={highlight ? "#d6dde6" : "#000000"}
-          emissiveIntensity={highlight ? 0.12 : 0}
-          roughness={0.18}
-          metalness={0.74}
-        />
-      </mesh>
-      <mesh position={[0.035, 0.035, 0.04]} rotation={[0, 0, Math.PI / 3]}>
-        <boxGeometry args={[0.1, 0.016, 0.016]} />
-        <meshStandardMaterial color="#10161f" />
-      </mesh>
+        <mesh position={[0, 0, 0.075]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.040, 0.040, 0.030, 20]} />
+          <meshStandardMaterial color={leverIdle} roughness={0.45} metalness={0.0} />
+        </mesh>
+        {/* Handle blade — rotates around the stem (Z) axis */}
+        <group position={[0, 0, 0.090]} rotation={[0, 0, active ? Math.PI / 2 : 0]}>
+          <mesh position={[0.13, 0, 0]}>
+            <boxGeometry args={[0.26, 0.05, 0.032]} />
+            <meshStandardMaterial
+              color={highlight ? leverHighlight : leverIdle}
+              emissive={highlight ? leverIdle : "#000000"}
+              emissiveIntensity={highlight ? 0.4 : 0}
+              roughness={0.45}
+              metalness={0.0}
+            />
+          </mesh>
+          {/* Handle tip cap */}
+          <mesh position={[0.255, 0, 0]}>
+            <boxGeometry args={[0.020, 0.058, 0.040]} />
+            <meshStandardMaterial color={leverDark} roughness={0.5} metalness={0.0} />
+          </mesh>
+        </group>
+      </group>
     </group>
   );
 }
@@ -166,186 +128,31 @@ export function CncMachine({
     },
   });
 
-  const accent = "#6f9d78";
-  const warning = "#c99554";
-  const danger = "#c5675d";
-
-  const doorBase = getPartPosition("door", mode);
   const airValvePos = getPartPosition("air_valve", mode);
-  const coolantValvePos = getPartPosition("coolant_toggle", mode);
-  const panelAnchor = getPartPosition("panel", mode);
-  const doorX = doorBase[0] + (machine.doorOpen ? -0.74 : 0);
-  const emergencyLift = machine.emergencyExtended ? 0.05 : 0;
-  const emergencyRotate = machine.emergencyClockwise ? Math.PI / 4 : 0;
 
   return (
     <group>
-      <group>
+      <ShellFallbackBoundary fallback={<ProceduralShell />}>
         <Suspense fallback={<ProceduralShell />}>
-          <MachineShell />
+          <MachineShell
+            machine={machine}
+            highlightedParts={highlightedParts}
+            onPartInteract={onPartInteract}
+            onHoverPart={onHoverPart}
+          />
         </Suspense>
-
-        <group position={[doorX, doorBase[1], doorBase[2]]} {...partHandlers("door")}>
-          <RoundedBox args={[1.22, 1.5, 0.075]} radius={0.028}>
-            <meshStandardMaterial
-              color={highlightIsOn("door", highlightedParts) ? "#708999" : "#4c5d6f"}
-              roughness={0.38}
-              metalness={0.34}
-            />
-          </RoundedBox>
-          <mesh position={[0, 0.02, 0.048]}>
-            <planeGeometry args={[0.88, 1.06]} />
-            <meshPhysicalMaterial color="#9cb3c4" transparent opacity={0.16} transmission={0.68} roughness={0.06} />
-          </mesh>
-          <mesh position={[0.41, 0, 0.055]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.024, 0.024, 0.38, 18]} />
-            <meshStandardMaterial color="#96a8b9" metalness={0.84} roughness={0.22} />
-          </mesh>
-        </group>
-      </group>
+      </ShellFallbackBoundary>
 
       <group position={airValvePos} {...partHandlers("air_valve")}>
-        <mesh position={[0, -0.18, 0]}>
-          <cylinderGeometry args={[0.046, 0.064, 0.34, 18]} />
-          <meshStandardMaterial color="#334350" roughness={0.72} metalness={0.18} />
-        </mesh>
-        <ValveWheel
-          active={machine.airValveOpen}
-          highlight={highlightIsOn("air_valve", highlightedParts)}
-          color={machine.airValveOpen ? accent : warning}
-        />
-      </group>
-
-      <group position={coolantValvePos} {...partHandlers("coolant_toggle")}>
-        <mesh position={[0, -0.16, 0]}>
-          <cylinderGeometry args={[0.05, 0.07, 0.3, 18]} />
-          <meshStandardMaterial color="#21303d" roughness={0.74} metalness={0.2} />
-        </mesh>
-        <ValveWheel
-          active={machine.coolantOn}
-          highlight={highlightIsOn("coolant_toggle", highlightedParts)}
-          color={machine.coolantOn ? "#73a8c7" : "#7e909f"}
-        />
+        <group scale={0.5} rotation={[0, -Math.PI / 2, 0]}>
+          <BallValve
+            active={machine.airValveOpen}
+            highlight={highlightIsOn("air_valve", highlightedParts)}
+          />
+        </group>
       </group>
 
       <CoolantVoxels active={machine.coolantOn} />
-
-      <group position={panelAnchor} {...partHandlers("panel")}>
-        <mesh position={[0, -1.02, -0.16]} rotation={[0.26, 0, 0]}>
-          <cylinderGeometry args={[0.085, 0.11, 0.9, 18]} />
-          <meshStandardMaterial color="#263443" roughness={0.56} metalness={0.28} />
-        </mesh>
-        <mesh position={[0, -0.8, -0.02]}>
-          <boxGeometry args={[0.5, 0.12, 0.3]} />
-          <meshStandardMaterial color="#111822" roughness={0.9} metalness={0.12} />
-        </mesh>
-        <RoundedBox args={[1.08, 1.92, 0.18]} radius={0.03}>
-          <meshStandardMaterial
-            color={highlightIsOn("panel", highlightedParts) ? "#202d3a" : "#151d27"}
-            roughness={0.54}
-            metalness={0.26}
-          />
-        </RoundedBox>
-
-        <RoundedBox args={[0.78, 0.5, 0.03]} radius={0.02} position={[0, 0.51, 0.1]}>
-          <meshStandardMaterial color="#0f151e" roughness={0.3} metalness={0.26} />
-        </RoundedBox>
-        <mesh position={[0, 0.51, 0.125]} {...partHandlers("diagnostics_panel")}>
-          <planeGeometry args={[0.7, 0.42]} />
-          <meshStandardMaterial
-            color={machine.diagnosticsOpen ? "#84b999" : "#2e404b"}
-            emissive={machine.diagnosticsOpen ? "#365840" : "#16232c"}
-            emissiveIntensity={machine.diagnosticsOpen ? 0.7 : 0.25}
-          />
-        </mesh>
-        <Text position={[0, 0.63, 0.15]} fontSize={0.05} color="#edf1f5" anchorX="center" anchorY="middle">
-          {machine.diagnosticsOpen ? "SYSTEM READY" : "DIAGNOSTICS"}
-        </Text>
-        <Text position={[0, 0.47, 0.15]} fontSize={0.033} color="#d4dde7" anchorX="center" anchorY="middle">
-          {machine.powerOn ? "POWER ONLINE" : "POWER OFF"}
-        </Text>
-
-        {[0, 1, 2, 3].flatMap((row) =>
-          [0, 1, 2].map((col) => {
-            const x = -0.26 + col * 0.19;
-            const y = -0.04 - row * 0.15;
-            return (
-              <RoundedBox key={`${row}-${col}`} args={[0.12, 0.085, 0.022]} radius={0.014} position={[x, y, 0.1]}>
-                <meshStandardMaterial color="#2a3948" roughness={0.5} metalness={0.18} />
-              </RoundedBox>
-            );
-          }),
-        )}
-
-        <group position={[0.17, 0.18, 0.18]} {...partHandlers("power_button")}>
-          <RoundButtonControl
-            label="ON"
-            active={machine.powerOn}
-            highlight={highlightIsOn("power_button", highlightedParts)}
-            color={accent}
-          />
-        </group>
-
-        <group position={[-0.15, 0.18, 0.18]} {...partHandlers("power_off")}>
-          <RoundButtonControl
-            label="OFF"
-            active={false}
-            highlight={highlightIsOn("power_off", highlightedParts)}
-            color="#8494a3"
-          />
-        </group>
-
-        <group position={[0.3, 0.18, 0.23]} rotation={[0, 0, emergencyRotate]} {...partHandlers("emergency_button")}>
-          <mesh position={[0, 0, -0.02]}>
-            <cylinderGeometry args={[0.13, 0.13, 0.04, 28]} />
-            <meshStandardMaterial color="#d6b54b" roughness={0.62} metalness={0.14} />
-          </mesh>
-          <mesh position={[0, 0, emergencyLift + 0.02]}>
-            <sphereGeometry args={[0.09, 28, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshStandardMaterial
-              color={machine.emergencyReleased ? "#dfb877" : danger}
-              emissive={highlightIsOn("emergency_button", highlightedParts) ? "#73413b" : "#000000"}
-              emissiveIntensity={highlightIsOn("emergency_button", highlightedParts) ? 0.25 : 0}
-              roughness={0.32}
-              metalness={0.06}
-            />
-          </mesh>
-        </group>
-
-        <group position={[-0.22, -0.49, 0.18]} {...partHandlers("handle_jog")}>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.13, 0.024, 16, 32]} />
-            <meshStandardMaterial color="#bac8d5" metalness={0.72} roughness={0.2} />
-          </mesh>
-          <mesh rotation={[0, 0, machine.handleJogPressed ? Math.PI / 3 : 0]}>
-            <boxGeometry args={[0.16, 0.024, 0.024]} />
-            <meshStandardMaterial color="#eef2f7" metalness={0.68} roughness={0.16} />
-          </mesh>
-        </group>
-
-        <group position={[0.24, -0.53, 0.2]} {...partHandlers("cycle_start")}>
-          <RectControlButton
-            label="START"
-            color="#6f9d78"
-            highlight={highlightIsOn("cycle_start", highlightedParts)}
-          />
-        </group>
-
-        <group position={[0.01, -0.53, 0.2]} {...partHandlers("feed_hold")}>
-          <RectControlButton
-            label="HOLD"
-            color="#b17061"
-            highlight={highlightIsOn("feed_hold", highlightedParts)}
-          />
-        </group>
-
-        <group position={[0.25, -0.83, 0.19]} {...partHandlers("mode_selector")}>
-          <ModeSelectorKnob highlight={highlightIsOn("mode_selector", highlightedParts)} />
-          <Text position={[0, 0.13, 0.02]} fontSize={0.028} color="#d8dfe6" anchorX="center" anchorY="middle">
-            MODE
-          </Text>
-        </group>
-      </group>
     </group>
   );
 }

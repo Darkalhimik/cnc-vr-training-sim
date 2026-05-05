@@ -48,18 +48,21 @@ export const MACHINE_PART_DESCRIPTIONS: Record<MachinePartId, string> = {
   coolant_toggle: "Separate coolant handwheel used for the water effect.",
 };
 
+// Positions are in three.js sceneGroup-local coords, derived from the GLB
+// Blender world positions through the export + machine-shell transform pipeline
+// (Y-up convert → fit scale 0.65 → ground+center → +0.46 outer lift).
 export const MACHINE_PART_POSITIONS: Record<MachinePartId, [number, number, number]> = {
-  body: [0, 1.16, 0],
-  door: [-0.06, 1.1, 1.06],
-  panel: [2.42, 1.26, 1.26],
-  air_valve: [-1.46, 0.76, -1.12],
-  power_button: [2.59, 1.44, 1.44],
-  power_off: [2.27, 1.44, 1.44],
-  emergency_button: [2.72, 1.44, 1.49],
-  handle_jog: [2.2, 0.77, 1.44],
-  diagnostics_panel: [2.42, 1.77, 1.38],
-  cycle_start: [2.66, 0.73, 1.46],
-  feed_hold: [2.43, 0.73, 1.46],
-  mode_selector: [2.67, 0.43, 1.45],
-  coolant_toggle: [1.82, 0.72, -1.18],
+  body: [0, 1.413, 0],
+  door: [0.316, 1.373, 0.538],
+  panel: [0.743, 1.399, 0.816],
+  air_valve: [-0.10, 0.75, -0.725],
+  power_button: [0.873, 1.480, 0.700],
+  power_off: [0.873, 1.469, 0.731],
+  emergency_button: [0.614, 1.487, 0.703],
+  handle_jog: [0.627, 1.394, 0.938],
+  diagnostics_panel: [0.743, 1.471, 0.718],
+  cycle_start: [0.834, 1.404, 0.914],
+  feed_hold: [0.769, 1.404, 0.914],
+  mode_selector: [0.873, 1.388, 0.963],
+  coolant_toggle: [1.35, 0.55, -0.6],
 };
