@@ -2,26 +2,33 @@
 
 import { create } from "zustand";
 import type { MachinePartId } from "./machine-parts";
-import type { MachineState } from "./machine-types";
+import {
+  initialMachineState,
+  isEstopReleased,
+  type MachineState,
+} from "./machine-types";
+import type { InteractionEvent } from "./interaction-events";
 
-export const initialMachineState: MachineState = {
-  airValveOpen: false,
-  powerOn: false,
-  emergencyExtended: false,
-  emergencyClockwise: false,
-  emergencyReleased: false,
-  doorOpen: false,
-  doorOpenedOnce: false,
-  doorCycleComplete: false,
-  handleJogPressed: false,
-  diagnosticsOpen: false,
-  coolantOn: false,
-};
+export { initialMachineState };
 
 export type InteractionResult = {
-  nextState: MachineState;
-  message: string;
+  next: MachineState;
+  event: InteractionEvent;
 };
+
+const reject = (
+  state: MachineState,
+  partId: MachinePartId,
+  reason: string,
+): InteractionResult => ({
+  next: state,
+  event: { kind: "rejected", partId, reason },
+});
+
+const noop = (state: MachineState, partId: MachinePartId): InteractionResult => ({
+  next: state,
+  event: { kind: "noop", partId },
+});
 
 export function applyInteraction(
   partId: MachinePartId,
@@ -29,191 +36,114 @@ export function applyInteraction(
 ): InteractionResult {
   switch (partId) {
     case "air_valve":
-      if (state.airValveOpen) {
-        return { nextState: state, message: "Air supply is already open." };
-      }
-      return {
-        nextState: { ...state, airValveOpen: true },
-        message: "Air supply opened. Valve position: OPEN.",
-      };
+      return state.airValveOpen
+        ? { next: { ...state, airValveOpen: false }, event: { kind: "valve-closed" } }
+        : { next: { ...state, airValveOpen: true }, event: { kind: "valve-opened" } };
 
     case "power_button":
-      if (!state.airValveOpen) {
-        return { nextState: state, message: "Open the air valve first." };
-      }
-      if (state.powerOn) {
-        return { nextState: state, message: "Machine is already powered on." };
-      }
-      return {
-        nextState: { ...state, powerOn: true },
-        message: "Control system powered on.",
-      };
+      if (!state.airValveOpen) return reject(state, partId, "Open the air valve first.");
+      if (state.powerOn) return noop(state, partId);
+      return { next: { ...state, powerOn: true }, event: { kind: "power-on" } };
 
     case "power_off":
-      if (!state.powerOn) {
-        return { nextState: state, message: "Control is already powered down." };
-      }
+      if (!state.powerOn) return noop(state, partId);
       return {
-        nextState: {
+        next: {
           ...state,
           powerOn: false,
-          emergencyExtended: false,
-          emergencyClockwise: false,
-          emergencyReleased: false,
-          handleJogPressed: false,
+          estop: "engaged",
+          handleJogActive: false,
           diagnosticsOpen: false,
           coolantOn: false,
         },
-        message: "Control powered down.",
+        event: { kind: "power-off" },
       };
 
     case "emergency_button":
-      if (!state.powerOn) {
-        return { nextState: state, message: "Power on the machine first." };
+      if (!state.powerOn) return reject(state, partId, "Power on the machine first.");
+      switch (state.estop) {
+        case "engaged":
+          return { next: { ...state, estop: "extended" }, event: { kind: "estop-extended" } };
+        case "extended":
+          return { next: { ...state, estop: "released" }, event: { kind: "estop-released" } };
+        case "released":
+          // Re-engaging the e-stop drops jog/diagnostics — physical interlock.
+          return {
+            next: {
+              ...state,
+              estop: "engaged",
+              handleJogActive: false,
+              diagnosticsOpen: false,
+            },
+            event: { kind: "estop-engaged" },
+          };
       }
-      if (!state.emergencyExtended) {
-        return {
-          nextState: { ...state, emergencyExtended: true },
-          message: "E-Stop extended. Now rotate clockwise to release.",
-        };
-      }
-      if (!state.emergencyClockwise) {
-        return {
-          nextState: {
-            ...state,
-            emergencyClockwise: true,
-            emergencyReleased: true,
-          },
-          message: "E-Stop rotated clockwise and released.",
-        };
-      }
-      return { nextState: state, message: "E-Stop is already released." };
+      return noop(state, partId);
 
     case "door":
-      // Open: close immediately. Closed: open (auto-close handled in store below).
-      if (state.doorOpen) {
-        return {
-          nextState: {
-            ...state,
-            doorOpen: false,
-            doorCycleComplete: state.doorOpenedOnce,
-          },
-          message: "Door closed.",
-        };
-      }
-      return {
-        nextState: { ...state, doorOpen: true, doorOpenedOnce: true },
-        message: "Door opening — will auto-close.",
-      };
+      return state.doorOpen
+        ? { next: { ...state, doorOpen: false }, event: { kind: "door-closed" } }
+        : { next: { ...state, doorOpen: true }, event: { kind: "door-opened" } };
 
     case "handle_jog":
-      if (!state.emergencyReleased) {
-        return { nextState: state, message: "Release the E-Stop first." };
-      }
-      if (state.handleJogPressed) {
-        return { nextState: state, message: "Handle Jog is already active." };
-      }
-      return {
-        nextState: { ...state, handleJogPressed: true },
-        message: "Handle Jog activated.",
-      };
+      if (!isEstopReleased(state)) return reject(state, partId, "Release the E-Stop first.");
+      return state.handleJogActive
+        ? { next: { ...state, handleJogActive: false }, event: { kind: "jog-off" } }
+        : { next: { ...state, handleJogActive: true }, event: { kind: "jog-on" } };
 
     case "diagnostics_panel":
-      if (!state.handleJogPressed) {
-        return { nextState: state, message: "Activate Handle Jog first." };
-      }
-      if (state.diagnosticsOpen) {
-        return { nextState: state, message: "Diagnostics panel is already open." };
-      }
-      return {
-        nextState: { ...state, diagnosticsOpen: true },
-        message: "Diagnostics panel opened. All systems OK.",
-      };
+      if (!state.handleJogActive) return reject(state, partId, "Activate Handle Jog first.");
+      return state.diagnosticsOpen
+        ? { next: { ...state, diagnosticsOpen: false }, event: { kind: "diagnostics-closed" } }
+        : { next: { ...state, diagnosticsOpen: true }, event: { kind: "diagnostics-opened" } };
 
     case "coolant_toggle":
-      if (!state.powerOn) {
-        return { nextState: state, message: "Power on and release the E-Stop before coolant." };
-      }
-      if (!state.emergencyReleased) {
-        return { nextState: state, message: "Release the E-Stop before coolant." };
-      }
-      return {
-        nextState: { ...state, coolantOn: !state.coolantOn },
-        message: state.coolantOn ? "Coolant off." : "Coolant on.",
-      };
+      if (!state.powerOn) return reject(state, partId, "Power on the machine first.");
+      if (!isEstopReleased(state)) return reject(state, partId, "Release the E-Stop first.");
+      return state.coolantOn
+        ? { next: { ...state, coolantOn: false }, event: { kind: "coolant-off" } }
+        : { next: { ...state, coolantOn: true }, event: { kind: "coolant-on" } };
 
     case "cycle_start":
-      if (!state.powerOn || !state.emergencyReleased) {
-        return { nextState: state, message: "Machine is not ready for cycle start." };
+      if (!state.powerOn || !isEstopReleased(state)) {
+        return reject(state, partId, "Machine is not ready for cycle start.");
       }
-      return {
-        nextState: state,
-        message: "Cycle start armed. Demo interaction only.",
-      };
+      return { next: state, event: { kind: "cycle-start" } };
 
     case "feed_hold":
-      if (!state.powerOn) {
-        return { nextState: state, message: "Power on the machine first." };
-      }
-      return {
-        nextState: state,
-        message: "Feed hold pressed. Motion paused.",
-      };
+      if (!state.powerOn) return reject(state, partId, "Power on the machine first.");
+      return { next: state, event: { kind: "feed-hold" } };
 
     case "mode_selector":
-      return {
-        nextState: state,
-        message: "Mode selector changed. Demo interaction only.",
-      };
+      return { next: state, event: { kind: "mode-changed" } };
+
+    case "panel":
+    case "body":
+      return noop(state, partId);
 
     default:
-      return { nextState: state, message: "No action for this part." };
+      return noop(state, partId);
   }
 }
 
 type MachineStore = {
   machine: MachineState;
-  lastMessage: string;
-  lastPart: MachinePartId | null;
-  interactWithPart: (partId: MachinePartId) => void;
+  lastEvent: InteractionEvent | null;
+  interactWithPart: (partId: MachinePartId) => InteractionEvent;
   reset: () => void;
 };
 
 export const useMachineStore = create<MachineStore>((set, get) => ({
   machine: initialMachineState,
-  lastMessage: "",
-  lastPart: null,
+  lastEvent: null,
 
   interactWithPart: (partId) => {
-    const { machine } = get();
-    const { nextState, message } = applyInteraction(partId, machine);
-    set({ machine: nextState, lastMessage: message, lastPart: partId });
-
-    // Door cycle: when a click opens the door, schedule an auto-close so a
-    // single click runs a full open-close cycle.
-    if (partId === "door" && !machine.doorOpen && nextState.doorOpen) {
-      setTimeout(() => {
-        const current = get().machine;
-        if (current.doorOpen) {
-          set({
-            machine: {
-              ...current,
-              doorOpen: false,
-              doorCycleComplete: true,
-            },
-            lastMessage: "Door closed.",
-            lastPart: "door",
-          });
-        }
-      }, 1500);
-    }
+    const { next, event } = applyInteraction(partId, get().machine);
+    set({ machine: next, lastEvent: event });
+    return event;
   },
 
   reset: () => {
-    set({
-      machine: initialMachineState,
-      lastMessage: "",
-      lastPart: null,
-    });
+    set({ machine: initialMachineState, lastEvent: null });
   },
 }));

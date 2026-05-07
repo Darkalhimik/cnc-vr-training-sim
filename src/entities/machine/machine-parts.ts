@@ -35,7 +35,7 @@ export const MACHINE_PART_LABELS: Record<MachinePartId, string> = {
 export const MACHINE_PART_DESCRIPTIONS: Record<MachinePartId, string> = {
   body: "Main enclosure of the HAAS UMC-500 machining center.",
   door: "Front sliding door that covers the machining envelope.",
-  panel: "Scaled-up operator console positioned near the machine front-right side.",
+  panel: "Vertical, fully-labeled operator console mounted on the right-side swing arm of the machine.",
   air_valve: "Rear air supply wheel used before powering the control.",
   power_button: "Main control power button.",
   power_off: "Turns the control off after a safe stop.",
@@ -50,19 +50,37 @@ export const MACHINE_PART_DESCRIPTIONS: Record<MachinePartId, string> = {
 
 // Positions are in three.js sceneGroup-local coords, derived from the GLB
 // Blender world positions through the export + machine-shell transform pipeline
-// (Y-up convert → fit scale 0.65 → ground+center → +0.46 outer lift).
+// (Y-up convert → fit scale → ground+center). Model bottom at Y=0.
+// v2: panel was rebuilt as a vertical, fully-labeled side console mounted on
+// the right of the machine; control-button positions recomputed from Blender.
+// v3: panel re-pivoted to a true side-arm pendant (chest-high, swung forward
+//     of the right enclosure face); air_valve restored to its original spot.
+// v4: panel mounted at the front face (right of the door, just clear of the
+//     enclosure) so it reads as a real swing-arm pendant; air_valve marker
+//     moved outside the rear face so the highlight is reachable, not buried
+//     inside the enclosure.
+// v5: air_valve dropped from chest height to ~0.5 m above the floor and
+//     pulled past the front face — sits at the bottom-front of the enclosure
+//     where it is visible to an operator standing at the door.
+// v6: air_valve pulled back to the rear face (90% revert of v5's forward
+//     move) while keeping the lower height — now sits behind the rear face
+//     at ~0.5 m, like a real air-supply valve mounted on the back-bottom.
+// v7: markers reverted to base 1× values. The whole scene group is wrapped
+//     in a runtime <group scale={machineScale}> in vr-scene.tsx so every
+//     child — GLB meshes, highlight arrows, the air-valve marker — scales
+//     uniformly from a single slider. No per-marker math required.
 export const MACHINE_PART_POSITIONS: Record<MachinePartId, [number, number, number]> = {
-  body: [0, 1.413, 0],
-  door: [0.316, 1.373, 0.538],
-  panel: [0.743, 1.399, 0.816],
-  air_valve: [-0.10, 0.75, -0.725],
-  power_button: [0.873, 1.480, 0.700],
-  power_off: [0.873, 1.469, 0.731],
-  emergency_button: [0.614, 1.487, 0.703],
-  handle_jog: [0.627, 1.394, 0.938],
-  diagnostics_panel: [0.743, 1.471, 0.718],
-  cycle_start: [0.834, 1.404, 0.914],
-  feed_hold: [0.769, 1.404, 0.914],
-  mode_selector: [0.873, 1.388, 0.963],
-  coolant_toggle: [1.35, 0.55, -0.6],
+  body: [0.043, 1.092, -0.046],
+  door: [-0.026, 1.352, 0.526],
+  panel: [0.912, 0.862, 0.805],
+  air_valve: [-0.100, 0.344, -0.829],
+  power_button: [0.547, 0.976, -0.339],
+  power_off: [0.621, 0.976, -0.252],
+  emergency_button: [0.551, 0.691, -0.275],
+  handle_jog: [0.577, 0.378, -0.297],
+  diagnostics_panel: [0.929, 0.934, 0.109],
+  cycle_start: [0.547, 0.080, -0.339],
+  feed_hold: [0.621, 0.080, -0.252],
+  mode_selector: [1.057, 0.634, 0.263],
+  coolant_toggle: [1.350, 0.550, -0.600],
 };

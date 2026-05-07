@@ -2,17 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
+import { Environment, OrbitControls } from "@react-three/drei";
 import { XR, createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { useMachineStore } from "@/entities/machine/machine-store";
-import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
 import { useInteraction } from "@/features/session/use-interaction";
 import { useSessionStore } from "@/features/session/session-store";
-import { useTutorialStore } from "@/features/tutorial/tutorial-store";
+import { useTutorialHighlights } from "@/features/tutorial/tutorial-store";
 import { CncMachine } from "./cnc-machine";
 import { GuideArrows } from "./arrows";
+import { TutorialTracker3D } from "./tutorial-tracker-3d";
 import { getPreviewCamera, getSceneGroupPosition } from "./layout";
 
 type VrSceneProps = {
@@ -39,24 +39,10 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
   const hoveredPart = useSessionStore((state) => state.hoveredPart);
   const hintsEnabled = useSessionStore((state) => state.hintsEnabled);
   const setHoveredPart = useSessionStore((state) => state.setHoveredPart);
-  const stepIndex = useTutorialStore((state) => state.stepIndex);
-  const subStepIndex = useTutorialStore((state) => state.subStepIndex);
-  const tutorialComplete = useTutorialStore((state) => state.isComplete);
+  const tutorialHighlights = useTutorialHighlights();
   const previewCamera = getPreviewCamera(mode);
   const sceneGroupPosition = getSceneGroupPosition(mode);
-
-  const tutorialHighlights = useMemo(() => {
-    if (gameMode !== "tutorial" || tutorialComplete) {
-      return [];
-    }
-
-    const currentStep = cncTutorialSteps[stepIndex];
-    if (!currentStep) {
-      return [];
-    }
-
-    return currentStep.subSteps?.[subStepIndex]?.highlight ?? currentStep.highlight;
-  }, [gameMode, stepIndex, subStepIndex, tutorialComplete]);
+  const [machineScale, setMachineScale] = useState(1.0);
 
   const highlightedParts = useMemo(() => {
     if (gameMode === "tutorial") {
@@ -85,6 +71,25 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
 
   return (
     <div className="relative h-full w-full">
+      {/* Machine scale slider — DOM-only, so it's only practical in desktop;
+          in immersive modes the user can't see it but the value persists. */}
+      <div className="pointer-events-none absolute left-4 top-4 z-20">
+        <label className="pointer-events-auto flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-bg-glass px-3 py-2 text-xs text-text-secondary backdrop-blur-xl">
+          <span className="font-mono tabular-nums">
+            Size {machineScale.toFixed(2)}×
+          </span>
+          <input
+            type="range"
+            min={0.1}
+            max={2.0}
+            step={0.05}
+            value={machineScale}
+            onChange={(e) => setMachineScale(parseFloat(e.target.value))}
+            className="w-40 accent-cyan"
+          />
+        </label>
+      </div>
+
       {(mode === "vr" || mode === "ar") && (
         <div className="pointer-events-none absolute right-4 top-4 z-20 flex flex-col items-end gap-2">
           <button
@@ -112,13 +117,14 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
         shadows
         dpr={[1, 1.75]}
         camera={{ position: previewCamera.position, fov: previewCamera.fov }}
-        gl={{ antialias: true, alpha: mode === "ar" }}
+        gl={{ antialias: true, alpha: true }}
       >
-        <color attach="background" args={[mode === "ar" ? "#071019" : "#09111a"]} />
-        <fog attach="fog" args={["#09111a", 10, 18]} />
+        {/* Transparent canvas in every mode — AR needs it for passthrough,
+            desktop/VR pick up whatever DOM background sits behind the canvas. */}
 
         <XR store={xrStore}>
-          <ambientLight intensity={0.6} />
+          <ambientLight intensity={1.4} />
+          <hemisphereLight intensity={0.8} groundColor="#15202c" />
           <directionalLight
             castShadow
             position={[4.5, 6.8, 3.2]}
@@ -133,9 +139,9 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
             angle={0.34}
             penumbra={0.45}
           />
-          <Environment preset="warehouse" />
+          {mode === "desktop" && <Environment preset="warehouse" />}
 
-          <group position={sceneGroupPosition}>
+          <group position={sceneGroupPosition} scale={machineScale}>
             <CncMachine
               mode={mode}
               highlightedParts={highlightedParts}
@@ -144,22 +150,14 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
               onHoverPart={setHoveredPart}
             />
             <GuideArrows highlightedParts={highlightedParts} mode={mode} />
+            {/* In immersive modes the DOM HUD is invisible — mirror the
+                tutorial tracker as a 3D panel beside the machine. */}
+            {gameMode === "tutorial" && (mode === "vr" || mode === "ar") && (
+              <group position={[-1.85, 1.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
+                <TutorialTracker3D />
+              </group>
+            )}
           </group>
-
-          <ContactShadows
-            position={[0, -0.02, -1.4]}
-            opacity={0.55}
-            scale={16}
-            blur={2.2}
-            far={12}
-          />
-
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, -1.3]} receiveShadow>
-            <planeGeometry args={[22, 22]} />
-            <meshStandardMaterial color="#111b28" roughness={0.96} metalness={0.04} />
-          </mesh>
-
-          <gridHelper args={[22, 32, "#1d5b73", "#153244"]} position={[0, -0.01, -1.3]} />
 
           {mode === "desktop" && (
             <OrbitControls

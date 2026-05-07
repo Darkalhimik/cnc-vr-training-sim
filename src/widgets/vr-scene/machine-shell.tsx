@@ -17,7 +17,7 @@ type Obj3DLike = {
 };
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 
-const MODEL_URL = "/models/haas-umc500-v2.glb?v=5";
+const MODEL_URL = "/models/haas-umc500-v2.glb?v=10";
 const TARGET_FOOTPRINT_METERS = 2.55;
 const DOOR_SLIDE_OPEN_DELTA = -0.74;
 const DOOR_SLIDE_LERP_RATE = 6;
@@ -31,7 +31,7 @@ const NODE_TO_PART_ID: Record<string, MachinePartId> = {
   Btn_HandleJog: "handle_jog",
   Btn_CycleStart: "cycle_start",
   Btn_FeedHold: "feed_hold",
-  Knob_ModeSelector: "mode_selector",
+  Btn_Memory: "mode_selector",
   Screen_Diagnostics: "diagnostics_panel",
 };
 
@@ -112,10 +112,11 @@ export function MachineShell({
     }
     const estop = emergencyRef.current;
     if (estop && emergencyBaseY.current !== null) {
-      const target = emergencyBaseY.current + (machine.emergencyExtended ? 0.012 : 0);
+      const lifted = machine.estop === "extended" || machine.estop === "released";
+      const target = emergencyBaseY.current + (lifted ? 0.012 : 0);
       const lerp = 1 - Math.exp(-dt * 8);
       estop.position.y += (target - estop.position.y) * lerp;
-      estop.rotation.z = machine.emergencyClockwise ? Math.PI / 4 : 0;
+      estop.rotation.z = machine.estop === "released" ? Math.PI / 4 : 0;
     }
   });
 
@@ -143,42 +144,67 @@ export function MachineShell({
     }
   };
 
-  // Highlight: emissive boost on the matching button mesh
+  // Highlight (tutorial pointer) + active-state visual feedback. Each part
+  // gets a per-mesh material clone the first time it's touched so emissive
+  // changes don't bleed into other buttons that share the same source material.
   useEffect(() => {
-    const highlightedNodeNames = new Set(
-      Object.entries(NODE_TO_PART_ID)
-        .filter(([, id]) => highlightedParts.includes(id))
-        .map(([node]) => node),
-    );
+    const isPartActive = (id: MachinePartId): boolean => {
+      switch (id) {
+        case "power_button":      return machine.powerOn;
+        case "power_off":         return !machine.powerOn;
+        case "emergency_button":  return machine.estop !== "engaged";
+        case "diagnostics_panel": return machine.diagnosticsOpen;
+        case "handle_jog":        return machine.handleJogActive;
+        case "door":              return machine.doorOpen;
+        default:                  return false;
+      }
+    };
+
+    const highlighted = new Set(highlightedParts);
+
     scene.traverse((o) => {
       if (!(o instanceof THREE.Mesh)) return;
-      const mat = o.material;
+      const partId = NODE_TO_PART_ID[o.name];
+      if (!partId) return;
+
+      let mat = o.material;
       if (!(mat instanceof THREE.MeshStandardMaterial)) return;
-      const shouldHighlight = highlightedNodeNames.has(o.name);
-      mat.emissiveIntensity = shouldHighlight ? 0.55 : mat.userData.baseEmissiveIntensity ?? 0;
-      if (mat.userData.baseEmissiveIntensity === undefined) {
-        mat.userData.baseEmissiveIntensity = 0;
+
+      // Clone per mesh once so emissive on this button doesn't tint others
+      if (!o.userData.matCloned) {
+        mat = mat.clone();
+        o.material = mat;
+        o.userData.matCloned = true;
+        o.userData.baseColor = mat.color.clone();
       }
-      if (shouldHighlight) {
+
+      const isHighlighted = highlighted.has(partId);
+      const isActive = isPartActive(partId);
+
+      if (isHighlighted) {
         mat.emissive.copy(mat.color);
+        mat.emissiveIntensity = 0.65;
+      } else if (isActive) {
+        mat.emissive.copy(mat.color);
+        mat.emissiveIntensity = 0.40;
+      } else {
+        mat.emissive.setRGB(0, 0, 0);
+        mat.emissiveIntensity = 0;
       }
     });
-  }, [highlightedParts, scene]);
+  }, [highlightedParts, scene, machine]);
 
-  // Outer group: explicit lift to cancel sceneGroupPosition's -0.46 in vr-scene.tsx
-  // so the model bottom lands on the floor mesh at Y≈-0.03.
-  // Inner group: scale + translate so model is centered horizontally and
-  // bottom-aligned at local Y=0.
+  // Single group: scale + translate so model is centered horizontally and
+  // bottom-aligned at local Y=0. The parent <group position={sceneGroupPosition}>
+  // in vr-scene.tsx places the whole rig in world space.
   return (
-    <group position={[0, 0.46, 0]}>
-      <group scale={fit.scale} position={[fit.tx * fit.scale, fit.ty * fit.scale, fit.tz * fit.scale]}>
-        <primitive
-          object={scene}
-          onClick={handleClick}
-          onPointerOver={handlePointerOver}
-          onPointerOut={handlePointerOut}
-        />
-      </group>
+    <group scale={fit.scale} position={[fit.tx * fit.scale, fit.ty * fit.scale, fit.tz * fit.scale]}>
+      <primitive
+        object={scene}
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      />
     </group>
   );
 }

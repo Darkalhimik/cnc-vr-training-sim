@@ -1,19 +1,16 @@
 import type { MachinePartId } from "@/entities/machine/machine-parts";
-import type { MachineState } from "@/entities/machine/machine-types";
+import type { InteractionEvent } from "@/entities/machine/interaction-events";
 
-export type TutorialSubStep = {
+export type StepPhase = {
   id: string;
   instruction: string;
   highlight: MachinePartId[];
-  isComplete: (state: MachineState) => boolean;
+  expects: (event: InteractionEvent) => boolean;
 };
 
 export type TutorialStep = {
   id: string;
   title: string;
-  description: string;
-  highlight: MachinePartId[];
-  actionLabel: string;
-  isComplete: (state: MachineState) => boolean;
-  subSteps?: TutorialSubStep[];
+  shortLabel: string;
+  phases: StepPhase[];
 };

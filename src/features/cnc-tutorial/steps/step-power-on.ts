@@ -1,10 +1,15 @@
 import type { TutorialStep } from "../tutorial-types";
 
 export const stepPowerOn: TutorialStep = {
-  id: "step-power-on",
+  id: "power-on",
   title: "Power On",
-  description: "Press the green POWER ON button on the control panel.",
-  highlight: ["power_button"],
-  actionLabel: "Press the power button",
-  isComplete: (state) => state.powerOn,
+  shortLabel: "Power",
+  phases: [
+    {
+      id: "press-power",
+      instruction: "Press the green POWER ON button on the control panel.",
+      highlight: ["power_button"],
+      expects: (e) => e.kind === "power-on",
+    },
+  ],
 };

@@ -1,27 +1,27 @@
 "use client";
 
 import { GlassPanel } from "@/shared/ui/glass-panel";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { useTutorialStore } from "@/features/tutorial/tutorial-store";
+import {
+  useCurrentPhase,
+  useCurrentStep,
+  useTutorialStore,
+} from "@/features/tutorial/tutorial-store";
 import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
 import { cn } from "@/shared/lib/cn";
 
-const STEP_LABELS = ["Air", "Power", "E-Stop", "Door", "Jog"];
-
 export function HudTutorialTracker() {
   const stepIndex = useTutorialStore((s) => s.stepIndex);
-  const subStepIndex = useTutorialStore((s) => s.subStepIndex);
-  const message = useTutorialStore((s) => s.message);
-  const isComplete = useTutorialStore((s) => s.isComplete);
-  const showCelebration = useTutorialStore((s) => s.showCelebration);
+  const phaseIndex = useTutorialStore((s) => s.phaseIndex);
+  const status = useTutorialStore((s) => s.status);
+  const celebrationDismissed = useTutorialStore((s) => s.celebrationDismissed);
   const reset = useTutorialStore((s) => s.reset);
   const dismiss = useTutorialStore((s) => s.dismissCelebration);
 
-  const currentStep = cncTutorialSteps[stepIndex];
-  const currentSubStep = currentStep?.subSteps?.[subStepIndex];
+  const currentStep = useCurrentStep();
+  const currentPhase = useCurrentPhase();
 
-  if (showCelebration) {
+  if (status === "complete" && !celebrationDismissed) {
     return (
       <GlassPanel className="flex max-w-sm flex-col gap-4 p-6">
         <h3 className="text-xl font-bold text-accent">Machine Ready!</h3>
@@ -40,14 +40,17 @@ export function HudTutorialTracker() {
     );
   }
 
-  if (isComplete) return null;
+  if (status === "complete") return null;
+  if (!currentStep || !currentPhase) return null;
+
+  const totalPhases = currentStep.phases.length;
 
   return (
     <GlassPanel className="flex max-w-md flex-col gap-4 p-4">
       {/* Step indicator */}
       <div className="flex items-center gap-1.5">
-        {cncTutorialSteps.map((_, i) => (
-          <div key={i} className="flex items-center">
+        {cncTutorialSteps.map((step, i) => (
+          <div key={step.id} className="flex items-center">
             <div
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
@@ -58,7 +61,7 @@ export function HudTutorialTracker() {
                     : "border border-border bg-bg-elevated text-text-muted",
               )}
             >
-              {i < stepIndex ? "\u2713" : i + 1}
+              {i < stepIndex ? "✓" : i + 1}
             </div>
             {i < cncTutorialSteps.length - 1 && (
               <div
@@ -74,17 +77,17 @@ export function HudTutorialTracker() {
 
       {/* Labels under indicator */}
       <div className="flex items-center">
-        {STEP_LABELS.map((label, i) => (
-          <div key={label} className="flex items-center">
+        {cncTutorialSteps.map((step, i) => (
+          <div key={step.id} className="flex items-center">
             <span
               className={cn(
                 "w-7 text-center text-[9px] font-semibold uppercase",
                 i < stepIndex ? "text-accent" : i === stepIndex ? "text-cyan" : "text-text-muted",
               )}
             >
-              {label}
+              {step.shortLabel}
             </span>
-            {i < STEP_LABELS.length - 1 && <div className="mx-0.5 w-6" />}
+            {i < cncTutorialSteps.length - 1 && <div className="mx-0.5 w-6" />}
           </div>
         ))}
       </div>
@@ -92,20 +95,15 @@ export function HudTutorialTracker() {
       {/* Current instruction */}
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-bold text-text-primary">
-          Step {stepIndex + 1}: {currentStep?.title}
+          Step {stepIndex + 1}: {currentStep.title}
+          {totalPhases > 1 && (
+            <span className="ml-2 text-text-muted">
+              ({phaseIndex + 1}/{totalPhases})
+            </span>
+          )}
         </h4>
-        <p className="text-xs leading-relaxed text-text-secondary">
-          {currentSubStep?.instruction ?? currentStep?.description}
-        </p>
-        {currentStep?.actionLabel && (
-          <Badge variant="active">{currentStep.actionLabel}</Badge>
-        )}
+        <p className="text-xs leading-relaxed text-text-secondary">{currentPhase.instruction}</p>
       </div>
-
-      {/* Feedback message */}
-      {message && (
-        <p className="text-xs font-medium text-cyan">{message}</p>
-      )}
 
       <Button size="sm" variant="ghost" onClick={reset}>
         Reset

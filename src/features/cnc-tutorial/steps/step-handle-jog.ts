@@ -1,24 +1,21 @@
 import type { TutorialStep } from "../tutorial-types";
 
 export const stepHandleJog: TutorialStep = {
-  id: "step-handle-jog",
+  id: "jog-diagnostics",
   title: "Jog & Diagnostics",
-  description: "Activate the Handle Jog, then open the Diagnostics panel.",
-  highlight: ["handle_jog", "diagnostics_panel"],
-  actionLabel: "Jog → Diagnostics",
-  isComplete: (state) => state.handleJogPressed && state.diagnosticsOpen,
-  subSteps: [
+  shortLabel: "Jog",
+  phases: [
     {
       id: "activate-jog",
       instruction: "Activate the Handle Jog lever.",
       highlight: ["handle_jog"],
-      isComplete: (state) => state.handleJogPressed,
+      expects: (e) => e.kind === "jog-on",
     },
     {
       id: "open-diagnostics",
       instruction: "Open the Diagnostics panel to verify all systems.",
       highlight: ["diagnostics_panel"],
-      isComplete: (state) => state.diagnosticsOpen,
+      expects: (e) => e.kind === "diagnostics-opened",
     },
   ],
 };

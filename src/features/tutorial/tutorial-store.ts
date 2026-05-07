@@ -3,129 +3,83 @@
 import { create } from "zustand";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
+import type { InteractionEvent } from "@/entities/machine/interaction-events";
+import type { MachinePartId } from "@/entities/machine/machine-parts";
 
-type StepStatus = "active" | "completing" | "completed";
+type TutorialStatus = "active" | "complete";
 
 type TutorialStore = {
   stepIndex: number;
-  subStepIndex: number;
-  stepStatus: StepStatus;
-  isComplete: boolean;
-  message: string;
-  showCelebration: boolean;
+  phaseIndex: number;
+  status: TutorialStatus;
+  celebrationDismissed: boolean;
   startedAt: number;
 
-  checkStepCompletion: () => void;
-  goToNextStep: () => void;
+  consumeEvent: (event: InteractionEvent) => void;
   reset: () => void;
   dismissCelebration: () => void;
 };
 
 export const useTutorialStore = create<TutorialStore>((set, get) => ({
   stepIndex: 0,
-  subStepIndex: 0,
-  stepStatus: "active",
-  isComplete: false,
-  message: "Open the rear air valve to begin.",
-  showCelebration: false,
+  phaseIndex: 0,
+  status: "active",
+  celebrationDismissed: false,
   startedAt: Date.now(),
 
-  checkStepCompletion: () => {
-    const { stepIndex, subStepIndex, isComplete: alreadyDone } = get();
-    if (alreadyDone) return;
+  consumeEvent: (event) => {
+    const { stepIndex, phaseIndex, status } = get();
+    if (status === "complete") return;
 
-    const machine = useMachineStore.getState().machine;
     const step = cncTutorialSteps[stepIndex];
-    if (!step) return;
+    const phase = step?.phases[phaseIndex];
+    if (!phase || !phase.expects(event)) return;
 
-    // Check sub-steps first
-    if (step.subSteps && step.subSteps.length > 0) {
-      const currentSub = step.subSteps[subStepIndex];
-      if (currentSub && currentSub.isComplete(machine)) {
-        const nextSubIndex = subStepIndex + 1;
-        if (nextSubIndex < step.subSteps.length) {
-          set({
-            subStepIndex: nextSubIndex,
-            message: step.subSteps[nextSubIndex].instruction,
-          });
-          return;
-        }
-        // All sub-steps done — fall through to check main step
-      }
-    }
-
-    if (step.isComplete(machine)) {
-      const nextStepIndex = stepIndex + 1;
-
-      if (nextStepIndex >= cncTutorialSteps.length) {
-        set({
-          stepIndex: nextStepIndex,
-          subStepIndex: 0,
-          stepStatus: "completed",
-          isComplete: true,
-          showCelebration: true,
-          message: "Machine startup sequence complete!",
-        });
-        return;
-      }
-
-      const nextStep = cncTutorialSteps[nextStepIndex];
-      const nextMessage = nextStep.subSteps?.[0]?.instruction ?? nextStep.description;
-
-      set({
-        stepIndex: nextStepIndex,
-        subStepIndex: 0,
-        stepStatus: "active",
-        message: nextMessage,
-      });
-    }
-  },
-
-  goToNextStep: () => {
-    const { stepIndex, isComplete: done } = get();
-    if (done) return;
-
-    const machine = useMachineStore.getState().machine;
-    const step = cncTutorialSteps[stepIndex];
-    if (!step || !step.isComplete(machine)) {
-      set({ message: "Complete the current step first." });
+    const isLastPhase = phaseIndex + 1 >= step.phases.length;
+    if (!isLastPhase) {
+      set({ phaseIndex: phaseIndex + 1 });
       return;
     }
 
     const nextStepIndex = stepIndex + 1;
     if (nextStepIndex >= cncTutorialSteps.length) {
-      set({
-        stepIndex: nextStepIndex,
-        subStepIndex: 0,
-        stepStatus: "completed",
-        isComplete: true,
-        showCelebration: true,
-        message: "Machine startup sequence complete!",
-      });
+      set({ stepIndex: nextStepIndex, phaseIndex: 0, status: "complete" });
       return;
     }
 
-    const nextStep = cncTutorialSteps[nextStepIndex];
-    set({
-      stepIndex: nextStepIndex,
-      subStepIndex: 0,
-      stepStatus: "active",
-      message: nextStep.subSteps?.[0]?.instruction ?? nextStep.description,
-    });
+    set({ stepIndex: nextStepIndex, phaseIndex: 0 });
   },
 
   reset: () => {
     useMachineStore.getState().reset();
     set({
       stepIndex: 0,
-      subStepIndex: 0,
-      stepStatus: "active",
-      isComplete: false,
-      message: "Open the rear air valve to begin.",
-      showCelebration: false,
+      phaseIndex: 0,
+      status: "active",
+      celebrationDismissed: false,
       startedAt: Date.now(),
     });
   },
 
-  dismissCelebration: () => set({ showCelebration: false }),
+  dismissCelebration: () => set({ celebrationDismissed: true }),
 }));
+
+// Derived selectors — keep consumers from reaching into cncTutorialSteps directly.
+
+export const useCurrentStep = () =>
+  useTutorialStore((s) => cncTutorialSteps[s.stepIndex] ?? null);
+
+export const useCurrentPhase = () =>
+  useTutorialStore((s) => cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex] ?? null);
+
+export const useTutorialHighlights = (): MachinePartId[] =>
+  useTutorialStore((s) => {
+    if (s.status === "complete") return [];
+    return cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex]?.highlight ?? [];
+  });
+
+export const useTutorialInstruction = (): string =>
+  useTutorialStore((s) => {
+    if (s.status === "complete") return "Machine startup sequence complete.";
+    return cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex]?.instruction ?? "";
+  });

@@ -70,7 +70,8 @@
       "mcp__blender__get_scene_info",
       "mcp__blender__execute_blender_code",
       "mcp__blender__get_viewport_screenshot",
-      "Bash(NEXT_TELEMETRY_DISABLED=1 npm run dev)"
+      "Bash(NEXT_TELEMETRY_DISABLED=1 npm run dev)",
+      "Bash(dir \"c:\\\\Programing\\\\Hydrolic\\\\cnc-vr-training-sim\\\\public\\\\models\\\\\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\ogoro"

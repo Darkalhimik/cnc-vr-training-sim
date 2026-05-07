@@ -51,13 +51,16 @@ export function getPartPosition(
 }
 
 export function getSceneGroupPosition(mode: DeviceMode): [number, number, number] {
+  // Model bottom is now at local Y=0 in MachineShell. Y=0 here keeps the
+  // machine on the real-world floor in VR/AR, on the desktop scene origin
+  // otherwise. Z offset puts the model in front of the headset spawn point.
   switch (mode) {
     case "vr":
-      return [0, -0.72, -3.1];
+      return [0, 0, -3.5];
     case "ar":
-      return [0, -1.02, -2.55];
+      return [0, 0, -2.0];
     default:
-      return [0, -0.46, 0];
+      return [0, 0, 0];
   }
 }
 

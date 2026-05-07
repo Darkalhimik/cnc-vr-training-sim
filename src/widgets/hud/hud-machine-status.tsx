@@ -17,7 +17,7 @@ export function HudMachineStatus() {
   const indicators: Indicator[] = [
     { label: "AIR", active: machine.airValveOpen, activeLabel: "ON", inactiveLabel: "OFF" },
     { label: "PWR", active: machine.powerOn, activeLabel: "ON", inactiveLabel: "OFF" },
-    { label: "E-STOP", active: machine.emergencyReleased, activeLabel: "FREE", inactiveLabel: "LOCK" },
+    { label: "E-STOP", active: machine.estop === "released", activeLabel: "FREE", inactiveLabel: "LOCK" },
     { label: "DOOR", active: !machine.doorOpen, activeLabel: "SHUT", inactiveLabel: "OPEN" },
     { label: "COOL", active: machine.coolantOn, activeLabel: "ON", inactiveLabel: "OFF" },
   ];
