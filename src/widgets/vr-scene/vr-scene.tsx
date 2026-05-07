@@ -13,6 +13,8 @@ import { useTutorialHighlights } from "@/features/tutorial/tutorial-store";
 import { CncMachine } from "./cnc-machine";
 import { GuideArrows } from "./arrows";
 import { TutorialTracker3D } from "./tutorial-tracker-3d";
+import { StatusBoard3D } from "./status-board-3d";
+import { SizePanel3D } from "./size-panel-3d";
 import { getPreviewCamera, getSceneGroupPosition } from "./layout";
 
 type VrSceneProps = {
@@ -73,7 +75,7 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
     <div className="relative h-full w-full">
       {/* Machine scale slider — DOM-only, so it's only practical in desktop;
           in immersive modes the user can't see it but the value persists. */}
-      <div className="pointer-events-none absolute left-4 top-4 z-20">
+      <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
         <label className="pointer-events-auto flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-bg-glass px-3 py-2 text-xs text-text-secondary backdrop-blur-xl">
           <span className="font-mono tabular-nums">
             Size {machineScale.toFixed(2)}×
@@ -151,11 +153,22 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
             />
             <GuideArrows highlightedParts={highlightedParts} mode={mode} />
             {/* In immersive modes the DOM HUD is invisible — mirror the
-                tutorial tracker as a 3D panel beside the machine. */}
-            {gameMode === "tutorial" && (mode === "vr" || mode === "ar") && (
-              <group position={[-1.85, 1.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
-                <TutorialTracker3D />
-              </group>
+                tutorial tracker, status board, and size panel as 3D boards
+                beside the machine. */}
+            {(mode === "vr" || mode === "ar") && (
+              <>
+                {gameMode === "tutorial" && (
+                  <group position={[-1.85, 1.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
+                    <TutorialTracker3D />
+                  </group>
+                )}
+                <group position={[1.85, 1.55, 0.6]} rotation={[0, -Math.PI / 6, 0]}>
+                  <StatusBoard3D />
+                </group>
+                <group position={[-1.85, 0.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
+                  <SizePanel3D value={machineScale} onChange={setMachineScale} />
+                </group>
+              </>
             )}
           </group>
 

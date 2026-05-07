@@ -65,6 +65,11 @@ export const useTutorialStore = create<TutorialStore>((set, get) => ({
 }));
 
 // Derived selectors — keep consumers from reaching into cncTutorialSteps directly.
+// Each selector must return a referentially stable value when the store hasn't
+// changed, or React's useSyncExternalStore will loop. The step-module arrays
+// are stable singletons; we just route through a frozen EMPTY for misses.
+
+const EMPTY_HIGHLIGHTS: MachinePartId[] = [];
 
 export const useCurrentStep = () =>
   useTutorialStore((s) => cncTutorialSteps[s.stepIndex] ?? null);
@@ -74,8 +79,8 @@ export const useCurrentPhase = () =>
 
 export const useTutorialHighlights = (): MachinePartId[] =>
   useTutorialStore((s) => {
-    if (s.status === "complete") return [];
-    return cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex]?.highlight ?? [];
+    if (s.status === "complete") return EMPTY_HIGHLIGHTS;
+    return cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex]?.highlight ?? EMPTY_HIGHLIGHTS;
   });
 
 export const useTutorialInstruction = (): string =>
