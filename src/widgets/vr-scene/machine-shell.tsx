@@ -94,12 +94,6 @@ export function MachineShell({
     if (emergencyRef.current && emergencyBaseY.current === null) {
       emergencyBaseY.current = emergencyRef.current.position.y;
     }
-    scene.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
   }, [scene]);
 
   // Smoothly slide door + lift E-stop based on machine state
