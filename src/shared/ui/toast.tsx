@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/shared/lib/cn";
+import { TONE_RING, TONE_TEXT, toneOf } from "@/shared/ui/tone";
 import { useEffect, useState } from "react";
 
 type ToastVariant = "success" | "info" | "warning" | "error";
@@ -10,13 +11,6 @@ interface ToastItem {
   message: string;
   variant: ToastVariant;
 }
-
-const variantStyles: Record<ToastVariant, string> = {
-  success: "border-accent/30 bg-accent/10 text-accent",
-  info: "border-cyan/30 bg-cyan/10 text-cyan",
-  warning: "border-warning/30 bg-warning/10 text-warning",
-  error: "border-danger/30 bg-danger/10 text-danger",
-};
 
 let toastId = 0;
 const listeners: Set<(toast: ToastItem) => void> = new Set();
@@ -48,9 +42,9 @@ export function ToastContainer({ className }: { className?: string }) {
         <div
           key={t.id}
           className={cn(
-            "rounded-[var(--radius-md)] border px-4 py-2.5 text-sm font-medium",
-            "backdrop-blur-xl animate-fade-in-up",
-            variantStyles[t.variant],
+            "animate-toast-in rounded-md bg-background/90 px-3 py-2 text-xs/relaxed shadow-md ring-1 ring-inset backdrop-blur",
+            TONE_TEXT[toneOf(t.variant)],
+            TONE_RING[toneOf(t.variant)],
           )}
         >
           {t.message}

@@ -2,7 +2,7 @@ import type { TutorialStep } from "../tutorial-types";
 
 export const stepDoorCheck: TutorialStep = {
   id: "door-check",
-  title: "Door Safety Check",
+  title: "Door safety check",
   shortLabel: "Door",
   phases: [
     {

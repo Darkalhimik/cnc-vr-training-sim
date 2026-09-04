@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import { useSessionStore } from "@/features/session/session-store";
-import { FreePlayOverlay } from "@/features/free-play/ui/freeplay-overlay";
 import { ClientOnly } from "@/shared/ui/client-only";
-import { HudLayout } from "@/widgets/hud/hud-layout";
-import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudNotification } from "@/widgets/hud/hud-notification";
-import { HudToolbar } from "@/widgets/hud/hud-toolbar";
-import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
+import { HudSidePanel } from "@/widgets/hud/hud-side-panel";
 import { VrScene } from "@/widgets/vr-scene/vr-scene";
 
 interface SimulationShellProps {
@@ -21,24 +18,63 @@ export function SimulationShell({ deviceMode, gameMode }: SimulationShellProps) 
   const setDeviceMode = useSessionStore((state) => state.setDeviceMode);
   const setGameMode = useSessionStore((state) => state.setGameMode);
 
+  // The XR store lives here rather than in the scene: the side panel owns the
+  // Enter VR / Enter AR control, and the scene owns the <XR> provider that
+  // consumes the same store.
+  const xrStore = useMemo(() => createXRStore(), []);
+  const [xrError, setXrError] = useState<string | null>(null);
+  const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
+
   useEffect(() => {
     setDeviceMode(deviceMode);
     setGameMode(gameMode);
   }, [deviceMode, gameMode, setDeviceMode, setGameMode]);
 
+  const startImmersiveMode = async () => {
+    try {
+      setXrError(null);
+      if (deviceMode === "vr") {
+        await xrStore.enterVR();
+      } else if (deviceMode === "ar") {
+        await xrStore.enterAR();
+      }
+    } catch {
+      setXrError("WebXR session could not start on this device.");
+    }
+  };
+
   return (
-    <div className="relative h-dvh w-screen overflow-hidden bg-bg-primary">
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.18),transparent_32%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.14),transparent_28%)]" />
+    <div className="flex h-dvh w-screen overflow-hidden">
+      {/* `bg-stage`, not `bg-background`: the machine's shell is light grey and
+          would disappear on a white page, so the stage stays dark in both
+          themes while the panel beside it follows the theme. */}
+      <div className="relative min-w-0 flex-1 bg-stage">
+        <ClientOnly>
+          <VrScene
+            mode={deviceMode}
+            gameMode={gameMode}
+            xrStore={xrStore}
+            onSessionInfo={setXrSessionInfo}
+          />
+        </ClientOnly>
 
-      <ClientOnly>
-        <VrScene mode={deviceMode} gameMode={gameMode} />
-      </ClientOnly>
+        {/* Toasts stay over the viewport — they report what an interaction with
+            the machine just did, and belong next to the machine, not filed in
+            the panel. */}
+        <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+          <div className="pointer-events-auto">
+            <HudNotification />
+          </div>
+        </div>
+      </div>
 
-      <HudLayout
-        topLeft={<HudToolbar />}
-        topRight={<HudMachineStatus />}
-        bottomLeft={gameMode === "tutorial" ? <HudTutorialTracker /> : <FreePlayOverlay />}
-        bottomRight={<HudNotification />}
+      <HudSidePanel
+        deviceMode={deviceMode}
+        gameMode={gameMode}
+        xrError={xrError}
+        xrSessionInfo={xrSessionInfo}
+        onEnterImmersive={startImmersiveMode}
+        className="w-80 shrink-0"
       />
     </div>
   );

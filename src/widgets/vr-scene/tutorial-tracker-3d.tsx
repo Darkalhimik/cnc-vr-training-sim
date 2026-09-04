@@ -9,18 +9,12 @@ import {
   useTutorialStore,
 } from "@/features/tutorial/tutorial-store";
 import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
+import { PANEL, toneOf } from "./panel-theme";
 
 const PANEL_W = 1.6;
 const PANEL_H = 1.05;
 const PANEL_DEPTH = 0.04;
 
-const COLOR_PANEL = "#0d1218";
-const COLOR_BORDER = "#1d3344";
-const COLOR_DONE = "#6f9d78";
-const COLOR_ACTIVE = "#7fc4d6";
-const COLOR_PENDING = "#3a4654";
-const COLOR_TEXT_PRIMARY = "#eef2f7";
-const COLOR_TEXT_SECONDARY = "#aab6c2";
 
 const noopRaycast: NonNullable<ThreeEvent<MouseEvent>>["object"]["raycast"] = () => {};
 
@@ -38,7 +32,7 @@ export function TutorialTracker3D() {
       cncTutorialSteps.map((step, i) => ({
         id: step.id,
         label: step.shortLabel,
-        color: i < stepIndex ? COLOR_DONE : i === stepIndex ? COLOR_ACTIVE : COLOR_PENDING,
+        color: toneOf(i < stepIndex ? "done" : i === stepIndex ? "active" : "pending"),
         isActive: i === stepIndex,
       })),
     [stepIndex],
@@ -49,18 +43,18 @@ export function TutorialTracker3D() {
       <PanelFrame>
         <Text
           position={[0, 0.30, PANEL_DEPTH / 2 + 0.001]}
-          fontSize={0.10}
-          color={COLOR_DONE}
+          fontSize={0.09}
+          color={toneOf("done")}
           anchorX="center"
           anchorY="middle"
           maxWidth={PANEL_W - 0.2}
         >
-          Machine Ready!
+          Machine ready
         </Text>
         <Text
           position={[0, 0, PANEL_DEPTH / 2 + 0.001]}
-          fontSize={0.05}
-          color={COLOR_TEXT_SECONDARY}
+          fontSize={0.045}
+          color={PANEL.textMuted}
           anchorX="center"
           anchorY="middle"
           maxWidth={PANEL_W - 0.2}
@@ -105,8 +99,8 @@ export function TutorialTracker3D() {
 
       <Text
         position={[-PANEL_W / 2 + 0.10, 0.10, PANEL_DEPTH / 2 + 0.001]}
-        fontSize={0.07}
-        color={COLOR_TEXT_PRIMARY}
+        fontSize={0.06}
+        color={PANEL.text}
         anchorX="left"
         anchorY="middle"
         maxWidth={PANEL_W - 0.2}
@@ -118,8 +112,8 @@ export function TutorialTracker3D() {
 
       <Text
         position={[-PANEL_W / 2 + 0.10, -0.05, PANEL_DEPTH / 2 + 0.001]}
-        fontSize={0.045}
-        color={COLOR_TEXT_SECONDARY}
+        fontSize={0.042}
+        color={PANEL.textMuted}
         anchorX="left"
         anchorY="top"
         maxWidth={PANEL_W - 0.2}
@@ -135,13 +129,13 @@ function PanelFrame({ children }: { children: React.ReactNode }) {
   return (
     <group>
       <RoundedBox args={[PANEL_W, PANEL_H, PANEL_DEPTH]} radius={0.04}>
-        <meshStandardMaterial color={COLOR_PANEL} roughness={0.65} metalness={0.05} />
+        <meshStandardMaterial color={PANEL.surface} roughness={0.65} metalness={0.05} />
       </RoundedBox>
       <RoundedBox
         args={[PANEL_W + 0.01, PANEL_H + 0.01, PANEL_DEPTH * 0.95]}
         radius={0.04}
       >
-        <meshBasicMaterial color={COLOR_BORDER} wireframe />
+        <meshBasicMaterial color={PANEL.edge} wireframe />
       </RoundedBox>
       {children}
     </group>

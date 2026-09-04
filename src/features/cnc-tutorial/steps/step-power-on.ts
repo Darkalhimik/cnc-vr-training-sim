@@ -2,7 +2,7 @@ import type { TutorialStep } from "../tutorial-types";
 
 export const stepPowerOn: TutorialStep = {
   id: "power-on",
-  title: "Power On",
+  title: "Power on",
   shortLabel: "Power",
   phases: [
     {

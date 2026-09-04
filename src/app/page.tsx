@@ -1,25 +1,28 @@
 "use client";
 
-import { FeatureGrid } from "@/widgets/landing/feature-grid";
-import { Footer } from "@/widgets/landing/footer";
+import Link from "next/link";
 import { HeroSection } from "@/widgets/landing/hero-section";
 import { ModeSelector } from "@/widgets/landing/mode-selector";
+import { ThemeToggle } from "@/widgets/theme-toggle/theme-toggle";
 
 export default function HomePage() {
   return (
-    <div className="relative z-[1] flex min-h-dvh flex-col overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.2),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.18),transparent_32%)]" />
+    <div className="min-h-dvh">
+      <nav className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-8 py-3">
+          <Link href="/" className="font-mono text-xs">
+            HAAS UMC-500
+          </Link>
+          <ThemeToggle />
+        </div>
+      </nav>
 
-      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-20 px-6 py-12 lg:px-10 lg:py-16">
-        <section className="grid items-start gap-10 lg:grid-cols-[1.3fr_0.9fr]">
+      <main className="mx-auto w-full max-w-6xl space-y-6 p-8">
+        <section className="grid items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
           <HeroSection />
           <ModeSelector />
         </section>
-
-        <FeatureGrid />
       </main>
-
-      <Footer />
     </div>
   );
 }

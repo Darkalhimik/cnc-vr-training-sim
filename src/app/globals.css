@@ -1,79 +1,140 @@
 @import "tailwindcss" source(none);
 @source "../**/*.{ts,tsx}";
 
-@theme {
-  --color-bg-primary: #0b1016;
-  --color-bg-secondary: #10161f;
-  --color-bg-elevated: #171f2a;
-  --color-bg-glass: rgba(16, 22, 31, 0.82);
+@custom-variant dark (&:is(.dark *));
 
-  --color-accent: #6f9d78;
-  --color-accent-hover: #608969;
-  --color-accent-glow: rgba(111, 157, 120, 0.18);
-  --color-cyan: #8fa1b1;
-  --color-cyan-glow: rgba(143, 161, 177, 0.15);
-  --color-warning: #c99554;
-  --color-danger: #c5675d;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
 
-  --color-text-primary: #edf1f5;
-  --color-text-secondary: #a8b1bc;
-  --color-text-muted: #6b7480;
+  /* Three faces, one job each. Loaded in src/app/layout.tsx — a face that is
+     loaded but not mapped here silently renders as the system stack, so check
+     computed styles rather than the import. */
+  --font-heading: var(--font-inter);
+  --font-sans: var(--font-open-sans);
+  --font-mono: var(--font-jetbrains-mono);
 
-  --color-border: rgba(168, 177, 188, 0.12);
-  --color-border-accent: rgba(111, 157, 120, 0.2);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-stage: var(--stage);
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 18px;
-  --radius-full: 9999px;
-
-  --font-title: "Bahnschrift", "Aptos Display", "Trebuchet MS", sans-serif;
-  --font-body: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-* {
-  box-sizing: border-box;
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.705 0.015 286.067);
+
+  /* The 3D viewport's backdrop. Deliberately the SAME in both themes: the
+     machine's own shell is light grey, so on a white stage it disappears.
+     Chrome is theme-aware, the stage the machine stands on is not — the same
+     split the c2m renderer makes for its own canvas. */
+  --stage: oklch(0.141 0.005 285.823);
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  min-height: 100dvh;
-  font-family: var(--font-body);
-  color: var(--color-text-primary);
-  background:
-    radial-gradient(circle at top left, rgba(111, 157, 120, 0.08), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(143, 161, 177, 0.08), transparent 28%),
-    var(--color-bg-primary);
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286.32);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.552 0.016 285.938);
+  --stage: oklch(0.141 0.005 285.823);
 }
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 24%);
-  z-index: 0;
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--color-border);
+    outline-color: color-mix(in oklab, var(--color-ring) 50%, transparent);
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100dvh;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-title);
-  letter-spacing: -0.025em;
-}
-
-@keyframes fadeInUp {
+/* The only motion in the product: a toast slides the short distance it
+   travelled so it reads as newly arrived rather than as always-present
+   chrome. Everything else is static on purpose. */
+@keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(4px);
   }
 
   to {
@@ -82,33 +143,6 @@ h4 {
   }
 }
 
-@keyframes pulse-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(111, 157, 120, 0.12);
-  }
-
-  50% {
-    box-shadow: 0 0 0 6px rgba(111, 157, 120, 0.04);
-  }
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 420ms ease-out both;
-}
-
-.animate-fade-in-up-delay-1 {
-  animation: fadeInUp 420ms ease-out 80ms both;
-}
-
-.animate-fade-in-up-delay-2 {
-  animation: fadeInUp 420ms ease-out 160ms both;
-}
-
-.animate-fade-in-up-delay-3 {
-  animation: fadeInUp 420ms ease-out 240ms both;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2.8s ease-in-out infinite;
+.animate-toast-in {
+  animation: toast-in 140ms ease-out both;
 }

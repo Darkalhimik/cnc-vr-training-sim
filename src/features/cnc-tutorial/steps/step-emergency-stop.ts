@@ -2,7 +2,7 @@ import type { TutorialStep } from "../tutorial-types";
 
 export const stepEmergencyStop: TutorialStep = {
   id: "estop",
-  title: "E-Stop Release",
+  title: "E-stop release",
   shortLabel: "E-Stop",
   phases: [
     {

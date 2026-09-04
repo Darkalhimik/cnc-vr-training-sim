@@ -2,7 +2,7 @@ import type { TutorialStep } from "../tutorial-types";
 
 export const stepAirFlow: TutorialStep = {
   id: "air-flow",
-  title: "Air Supply",
+  title: "Air supply",
   shortLabel: "Air",
   phases: [
     {

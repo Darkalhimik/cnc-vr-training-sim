@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { XR, createXRStore, useXR } from "@react-three/xr";
+import { XR, useXR, type createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { useMachineStore } from "@/entities/machine/machine-store";
@@ -20,6 +20,8 @@ import { getPreviewCamera, getSceneGroupPosition } from "./layout";
 type VrSceneProps = {
   mode: DeviceMode;
   gameMode: GameMode;
+  xrStore: ReturnType<typeof createXRStore>;
+  onSessionInfo: (info: string | null) => void;
 };
 
 // In an immersive-ar session the compositor blends our rendered frame on
@@ -67,10 +69,7 @@ const FREEPLAY_HINTS: MachinePartId[] = [
   "coolant_toggle",
 ];
 
-export function VrScene({ mode, gameMode }: VrSceneProps) {
-  const xrStore = useMemo(() => createXRStore(), []);
-  const [xrError, setXrError] = useState<string | null>(null);
-  const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
+export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps) {
   const machine = useMachineStore((state) => state.machine);
   const interactWithPart = useInteraction();
   const hoveredPart = useSessionStore((state) => state.hoveredPart);
@@ -79,7 +78,8 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
   const tutorialHighlights = useTutorialHighlights();
   const previewCamera = getPreviewCamera(mode);
   const sceneGroupPosition = getSceneGroupPosition(mode);
-  const [machineScale, setMachineScale] = useState(1.0);
+  const machineScale = useSessionStore((state) => state.machineScale);
+  const setMachineScale = useSessionStore((state) => state.setMachineScale);
 
   const highlightedParts = useMemo(() => {
     if (gameMode === "tutorial") {
@@ -93,68 +93,8 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
     return hoveredPart ? [hoveredPart] : FREEPLAY_HINTS;
   }, [gameMode, hintsEnabled, hoveredPart, tutorialHighlights]);
 
-  const startImmersiveMode = async () => {
-    try {
-      setXrError(null);
-      if (mode === "vr") {
-        await xrStore.enterVR();
-      } else if (mode === "ar") {
-        await xrStore.enterAR();
-      }
-    } catch {
-      setXrError("WebXR session could not start on this device.");
-    }
-  };
-
   return (
     <div className="relative h-full w-full">
-      {/* Machine scale slider — DOM-only, so it's only practical in desktop;
-          in immersive modes the user can't see it but the value persists. */}
-      <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
-        <label className="pointer-events-auto flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-bg-glass px-3 py-2 text-xs text-text-secondary backdrop-blur-xl">
-          <span className="font-mono tabular-nums">
-            Size {machineScale.toFixed(2)}×
-          </span>
-          <input
-            type="range"
-            min={0.1}
-            max={2.0}
-            step={0.05}
-            value={machineScale}
-            onChange={(e) => setMachineScale(parseFloat(e.target.value))}
-            className="w-40 accent-cyan"
-          />
-        </label>
-      </div>
-
-      {(mode === "vr" || mode === "ar") && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 flex flex-col items-end gap-2">
-          <button
-            type="button"
-            onClick={startImmersiveMode}
-            className="pointer-events-auto rounded-[var(--radius-md)] border border-cyan/40 bg-cyan/10 px-4 py-2 text-sm font-semibold text-cyan backdrop-blur-xl transition hover:bg-cyan/15"
-          >
-            {mode === "vr" ? "Enter VR" : "Enter AR"}
-          </button>
-          {xrError ? (
-            <div className="max-w-xs rounded-[var(--radius-md)] border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger backdrop-blur-xl">
-              {xrError}
-            </div>
-          ) : (
-            <div className="max-w-xs rounded-[var(--radius-md)] border border-border bg-bg-glass px-3 py-2 text-xs text-text-secondary backdrop-blur-xl">
-              {mode === "vr"
-                ? "Preview mode is active. Use Enter VR on a WebXR-capable headset."
-                : "Preview mode is active. Use Enter AR on a supported mobile device."}
-            </div>
-          )}
-          {xrSessionInfo && (
-            <div className="max-w-xs rounded-[var(--radius-md)] border border-cyan/40 bg-cyan/10 px-3 py-2 font-mono text-[10px] text-cyan backdrop-blur-xl">
-              {xrSessionInfo}
-            </div>
-          )}
-        </div>
-      )}
-
       <Canvas
         dpr={[1, 1.75]}
         camera={{ position: previewCamera.position, fov: previewCamera.fov }}
@@ -164,7 +104,7 @@ export function VrScene({ mode, gameMode }: VrSceneProps) {
             desktop/VR pick up whatever DOM background sits behind the canvas. */}
 
         <XR store={xrStore}>
-          <ArPassthrough onSessionInfo={setXrSessionInfo} />
+          <ArPassthrough onSessionInfo={onSessionInfo} />
           <ambientLight intensity={1.4} />
           <hemisphereLight intensity={0.8} groundColor="#15202c" />
           <directionalLight position={[4.5, 6.8, 3.2]} intensity={1.8} />

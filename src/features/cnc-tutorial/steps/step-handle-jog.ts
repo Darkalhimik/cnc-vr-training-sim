@@ -2,7 +2,7 @@ import type { TutorialStep } from "../tutorial-types";
 
 export const stepHandleJog: TutorialStep = {
   id: "jog-diagnostics",
-  title: "Jog & Diagnostics",
+  title: "Jog and diagnostics",
   shortLabel: "Jog",
   phases: [
     {
