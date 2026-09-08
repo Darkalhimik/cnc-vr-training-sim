@@ -15,6 +15,7 @@ import { GuideArrows } from "./arrows";
 import { TutorialTracker3D } from "./tutorial-tracker-3d";
 import { StatusBoard3D } from "./status-board-3d";
 import { SizePanel3D } from "./size-panel-3d";
+import { WarningBoard3D } from "./warning-board-3d";
 import { getPreviewCamera, getSceneGroupPosition } from "./layout";
 
 type VrSceneProps = {
@@ -143,6 +144,16 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
               </>
             )}
           </group>
+
+          {/* Outside the scaled group on purpose: a safety warning that shrinks
+              with the machine stops being a warning. */}
+          {(mode === "vr" || mode === "ar") && (
+            <group position={sceneGroupPosition}>
+              <group position={[0, 2.45, 0.75]}>
+                <WarningBoard3D />
+              </group>
+            </group>
+          )}
 
           {mode === "desktop" && (
             <OrbitControls

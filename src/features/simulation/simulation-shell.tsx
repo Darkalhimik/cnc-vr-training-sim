@@ -21,7 +21,13 @@ export function SimulationShell({ deviceMode, gameMode }: SimulationShellProps) 
   // The XR store lives here rather than in the scene: the side panel owns the
   // Enter VR / Enter AR control, and the scene owns the <XR> provider that
   // consumes the same store.
-  const xrStore = useMemo(() => createXRStore(), []);
+  // `emulate: false` because @pmndrs/xr otherwise injects the IWER emulator in
+  // development, and its DevUI builds a second WebGLRenderer of its own. When
+  // that extra context cannot be created the error escapes createXRStore and
+  // takes the whole 3D scene down with it — a blank stage, no model request, no
+  // message. A real headset is unaffected, and a WebXR emulator extension
+  // already supplies navigator.xr when one is installed.
+  const xrStore = useMemo(() => createXRStore({ emulate: false }), []);
   const [xrError, setXrError] = useState<string | null>(null);
   const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
 

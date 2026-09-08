@@ -36,9 +36,24 @@ export function applyInteraction(
 ): InteractionResult {
   switch (partId) {
     case "air_valve":
-      return state.airValveOpen
-        ? { next: { ...state, airValveOpen: false }, event: { kind: "valve-closed" } }
-        : { next: { ...state, airValveOpen: true }, event: { kind: "valve-opened" } };
+      if (!state.airValveOpen) {
+        return { next: { ...state, airValveOpen: true }, event: { kind: "valve-opened" } };
+      }
+      // Losing air pressure trips the machine out the same way a power cut
+      // does — nothing on it runs dry. Closing the valve behind yourself is
+      // therefore not a free action, which is the point of the drill.
+      return {
+        next: {
+          ...state,
+          airValveOpen: false,
+          powerOn: false,
+          estop: "engaged",
+          handleJogActive: false,
+          diagnosticsOpen: false,
+          coolantOn: false,
+        },
+        event: { kind: "valve-closed" },
+      };
 
     case "power_button":
       if (!state.airValveOpen) return reject(state, partId, "Open the air valve first.");
@@ -81,14 +96,30 @@ export function applyInteraction(
       return noop(state, partId);
 
     case "door":
-      return state.doorOpen
-        ? { next: { ...state, doorOpen: false }, event: { kind: "door-closed" } }
-        : { next: { ...state, doorOpen: true }, event: { kind: "door-opened" } };
+      if (state.doorOpen) {
+        return { next: { ...state, doorOpen: false }, event: { kind: "door-closed" } };
+      }
+      // Door interlock: opening it stops motion but leaves control power up,
+      // so jog, diagnostics and coolant drop while power and the e-stop stay.
+      return {
+        next: {
+          ...state,
+          doorOpen: true,
+          handleJogActive: false,
+          diagnosticsOpen: false,
+          coolantOn: false,
+        },
+        event: { kind: "door-opened" },
+      };
 
     case "handle_jog":
       if (!isEstopReleased(state)) return reject(state, partId, "Release the E-Stop first.");
+      // Diagnostics is reached through jog, so it cannot outlive it.
       return state.handleJogActive
-        ? { next: { ...state, handleJogActive: false }, event: { kind: "jog-off" } }
+        ? {
+            next: { ...state, handleJogActive: false, diagnosticsOpen: false },
+            event: { kind: "jog-off" },
+          }
         : { next: { ...state, handleJogActive: true }, event: { kind: "jog-on" } };
 
     case "diagnostics_panel":

@@ -18,7 +18,8 @@ export function useInteraction() {
     }
 
     if (gameMode === "tutorial" && event.kind !== "noop") {
-      useTutorialStore.getState().consumeEvent(event);
+      const violation = useTutorialStore.getState().consumeEvent(event);
+      if (violation) showToast(violation, "warning");
     }
   };
 }
