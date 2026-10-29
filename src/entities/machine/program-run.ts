@@ -33,6 +33,8 @@ export function setupOf(m: MachineState): NcSetup {
       ]),
     ),
     toolInSpindle: m.toolInSpindle,
+    pockets: m.pockets,
+    carouselPocket: m.carouselPocket,
     start: m.position,
     programs: m.programs,
     options: {
@@ -45,9 +47,17 @@ export function setupOf(m: MachineState): NcSetup {
 }
 
 /** The text CYCLE START runs: the active program, or the MDI blocks closed
- *  with an M30 like a program. */
+ *  with an M30 like a program. A keypad tool change runs as its M06. */
 export function runText(m: MachineState): string {
+  if (m.runSource === "atc") return `T${m.atcTool} M06\nM30`;
   return m.runSource === "mdi" ? `${m.mdi}\nM30` : (m.programs[m.activeProgram] ?? "");
+}
+
+/** The tool change the run is in the middle of, and how far into it. Feed
+ *  hold stops the cursor, so a held change holds its pose. */
+export function activeToolChange(run: ActiveRun | null) {
+  const motion = run?.result.motions[run.cursor.index];
+  return motion?.kind === "toolChange" ? { change: motion, elapsed: run!.cursor.elapsed } : null;
 }
 
 /** Interprets what CYCLE START just started (`next`), from the machine as it

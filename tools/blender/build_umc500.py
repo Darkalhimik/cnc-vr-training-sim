@@ -1,6 +1,8 @@
 """
 Builds public/models/umc500.glb, the rigged HAAS UMC-500 the simulator loads,
-from the Haas configurator CAD export in assets/cad/.
+from Haas's CAD in assets/cad/: the solid models published on the machine's
+page (tessellated by tools/cad/step_to_glb.py) for every part they have, and
+the lighter configurator export for the standard parts they lack.
 
     blender -b --factory-startup --python tools/blender/build_umc500.py
     blender -b --factory-startup --python tools/blender/build_umc500.py -- --preview <dir>
@@ -8,11 +10,12 @@ from the Haas configurator CAD export in assets/cad/.
 Run it from Blender's Scripting tab instead to get the built scene open for
 inspection (set CNC_SIM_REPO if the text block is not saved inside the repo).
 
-The CAD file is every factory option overlaid in one assembly: three tool
-changers, two spindles, three chip conveyors, two coolant tanks and four table
-tops, all occupying the same space. This script
+Each CAD file is several factory options overlaid in one assembly: tool
+changers, two spindles, three chip conveyors, two coolant tanks and several
+table tops, all occupying the same space. This script
 
-  1. keeps one standard configuration and stands it upright (Z up, front -Y);
+  1. keeps one standard configuration, each part from the finest model that
+     has it, and stands it upright (Z up, front -Y);
   2. splits the trunnion into its fixed base and the tilting cradle, and puts
      every moving part under a pivot on its real axis (X/Y/Z, B tilt, C table,
      spindle, door);
@@ -56,6 +59,16 @@ def repo_root() -> Path:
 
 REPO = repo_root()
 SRC = REPO / "assets" / "cad" / "UMC-500_SS_02_2026.glb"
+# Haas's solid model, tessellated by tools/cad/step_to_glb.py. Not in git (the
+# STEP is 50 MB): download "3D Model w/SMTC-120 (ZIP)" from the UMC-500 page
+# on haascnc.com into assets/cad/haas-smtc120/ and convert it — the README's
+# Model section has the commands. Without it the build falls back to the
+# configurator model alone.
+SOLID = REPO / "assets" / "cad" / "haas-smtc120" / "umc500-smtc120.glb"
+# The 10-pallet-pool model ("3D Model w/10+1 Pallet Pool (ZIP)", into
+# assets/cad/haas-pp10/) is the only one with the standard side-mount
+# changer's arm and cam box; optional like SOLID.
+SOLID_PP = REPO / "assets" / "cad" / "haas-pp10" / "umc500-pp10.glb"
 OUT = REPO / "public" / "models" / "umc500.glb"
 
 ARGS = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
@@ -63,6 +76,36 @@ PREVIEW_DIR = ARGS[ARGS.index("--preview") + 1] if "--preview" in ARGS else None
 
 # The configurator's floor sits at Y = -0.897 in the source file.
 CAD_FLOOR = 0.897
+
+# The solid model's parts, by STEP occurrence: OpenCascade names each glTF
+# node NAUO<n> after it (the part names are in the .inventory.json beside the
+# GLB). Identified from renders of each part (part 12 and 13 are the CAT40 and
+# HSK spindles, 23 and 24 the 55 and 95 gallon tanks). Not taken: 3 the anchor pattern, 5 a fixture
+# plate, 6 the blank platter, 13 the HSK spindle, 15 the solid model's own
+# pendant (ours is measured on the configurator's), 16-18 chip conveyors,
+# 20-22 and 26 the 120-pocket chain changer and its arm and frame, 24 the
+# 95 gallon tank, 25 its enclosure, which is cut for the 120-pocket changer.
+SOLID_PARTS = {
+    1: "base",
+    2: "pads",
+    4: "trunnion",
+    7: "platter",
+    8: "wips",
+    9: "saddle_x",
+    10: "ram_y",
+    11: "head_z",
+    12: "spindle",
+    14: "side_window",
+    19: "door",
+    23: "tank",
+}
+# From the pallet-pool model only the changer arm with its cam box: it lies
+# on the configurator's to within 2 mm and has six times its triangles.
+SOLID_PP_PARTS = {13: "tc_arm"}
+# The configurator model supplies the rest of the standard configuration: the
+# enclosure with the 30+1 side-mount changer's opening (the solid models' are
+# cut for their own changers, and no finer), the 30-pocket carousel, and the
+# pendant our controls were measured on.
 
 # CAD mesh name (minus Blender's .NNN suffix) -> role. Anything not listed is
 # an alternative option and is dropped.
@@ -90,6 +133,8 @@ RIG_NODES = (
     "Door", "EStop", "Handwheel", "AirValve_Lever", "AirGauge_Needle",
     "MainSwitch_Handle", "Beacon", "Screen", "Coolant_Nozzle", "Tool_Tip",
     "Stock_Mount", "Vise_JawNeg", "Vise_JawPos",
+    "ToolChanger_Carousel", "ToolChanger_Arm", "ArmGrip_A", "ArmGrip_B",
+    # ...plus Pocket_01..30 and PocketTool_01..30, checked in build().
 )
 
 # --- measured geometry -------------------------------------------------------
@@ -126,6 +171,24 @@ FEED_HOLD = (0.3645, 1.2672)
 VISE_RISER = 0.055
 VISE_TOP = 0.100
 JAW_GRIP = 0.008
+
+# Side-mount tool changer (docs/haas-ngc/smtc.md). The carousel is a wheel on
+# the left wall turning about an X axis; its pockets hold the tools level,
+# cutters pointing out at the wall. The pocket at the bottom (the station) tilts
+# down to hang its tool vertically under the double arm, which turns about a
+# vertical axis halfway between that pocket and the spindle at the tool-change
+# position (X-610 Y-82 Z0). Measured off the CAD's pocket ends and arm plate.
+TC_POCKETS = 30
+TC_CAROUSEL_AXIS = Vector((-0.865, -0.4105, 1.742))  # a point on the axis (along X)
+TC_POCKET_RADIUS = 0.3205
+TC_POCKET_MOUTH_X = -1.014  # gauge line of a tool in a pocket
+TC_POCKET_INNER_X = -0.885
+TC_POCKET_BORE = 0.031  # sleeve radius: a CAT40 flange (63.5 mm) covers the mouth
+TC_ARM_PIVOT = Vector((-0.611, -0.4105, 1.357))  # at the spindle gauge line, Z0
+TC_ARM_REACH = 0.3055
+# The station pocket tilts about this point so that, hanging down, its tool's
+# gauge line lands under the arm's far end: TC_ARM_PIVOT - (TC_ARM_REACH, 0, 0).
+TC_POCKET_PIVOT = Vector((-0.93275, -0.4105, 1.43825))
 
 # Rear panel and electrical cabinet faces.
 REAR_FACE_Y = 1.1485
@@ -168,10 +231,12 @@ def build_materials():
         "sheet": material("M_Sheet", "#d3d6d9", 0.1, 0.5),
         "door": material("M_DoorFrame", "#c4c8cc", 0.1, 0.45),
         "glass": material("M_Glass", "#9fb8c8", 0.0, 0.05, alpha=0.22),
-        "casting": material("M_Casting", "#3c4046", 0.15, 0.65),
-        "casting_light": material("M_CastingLight", "#5d646b", 0.2, 0.55),
-        "trunnion": material("M_Trunnion", "#9aa1a8", 0.35, 0.45),
-        "head": material("M_Head", "#8f969d", 0.25, 0.5),
+        # Haas castings are painted grey; with the solid model's ribs and
+        # bosses they read as parts only if they are not near-black.
+        "casting": material("M_Casting", "#5c6168", 0.15, 0.6),
+        "casting_light": material("M_CastingLight", "#7a8188", 0.2, 0.5),
+        "trunnion": material("M_Trunnion", "#b3b9bf", 0.3, 0.42),
+        "head": material("M_Head", "#9ba2a9", 0.25, 0.45),
         "steel": material("M_Steel", "#b9bfc6", 0.85, 0.3),
         "carbide": material("M_Carbide", "#3d4146", 0.7, 0.35),
         "rubber": material("M_Rubber", "#1b1c1e", 0.0, 0.8),
@@ -312,6 +377,30 @@ class Geo:
         )
         self._tag(r["verts"], mat, smooth)
 
+    def tube(self, outer, inner, depth, floor, at, mat=0, axis="Z", segments=24):
+        """A sleeve open at its local -Z end: the outer wall, the bore down to
+        a floor `floor` short of the closed end, and the ring between them at
+        the mouth."""
+        m = Matrix.Translation(at) @ self.AXES[axis]
+        steps = [2 * math.pi * k / segments for k in range(segments)]
+
+        def ring(r, z):
+            return [self.bm.verts.new(m @ Vector((r * math.cos(a), r * math.sin(a), z))) for a in steps]
+
+        o0, o1 = ring(outer, -depth / 2), ring(outer, depth / 2)
+        i0, i1 = ring(inner, -depth / 2), ring(inner, depth / 2 - floor)
+        walls = []
+        for k in range(segments):
+            n = (k + 1) % segments
+            walls.append(self.bm.faces.new((o0[k], o0[n], o1[n], o1[k])))
+            walls.append(self.bm.faces.new((i0[n], i0[k], i1[k], i1[n])))
+            self.bm.faces.new((o0[k], i0[k], i0[n], o0[n])).material_index = mat
+        for f in walls:
+            f.material_index = mat
+            f.smooth = True
+        self.bm.faces.new(o1).material_index = mat
+        self.bm.faces.new(list(reversed(i1))).material_index = mat
+
     def text(self, body, size, at, mat=0, align="CENTER"):
         me = text_mesh(body, size, align)
         src = bmesh.new()
@@ -338,34 +427,121 @@ class Geo:
 # --- CAD import and cleanup ----------------------------------------------------
 
 
+def stand_up_matrix():
+    # Both models are Y-up with the front towards +Z and the floor 0.897 m
+    # below their origin (Haas sets the origin where the Z and Y ballscrews
+    # cross). Stand them up: Z up, front -Y, floor at zero. The two then
+    # coincide to the millimetre — the configurator model is made from the
+    # same solid model.
+    return Matrix.Translation((0, 0, CAD_FLOOR)) @ Matrix.Rotation(math.radians(90), 4, "X")
+
+
+def adopt(ob, matrix):
+    """Bake `matrix` into the mesh, unparent it, and file it in the scene."""
+    ob.data.transform(matrix @ ob.matrix_world)
+    ob.parent = None
+    ob.matrix_world = Matrix()
+    for coll in list(ob.users_collection):
+        coll.objects.unlink(ob)
+    COLL.objects.link(ob)
+
+
 def import_cad():
+    solids = [(path, roles) for path, roles in ((SOLID, SOLID_PARTS), (SOLID_PP, SOLID_PP_PARTS)) if path.exists()]
+    for path in (SOLID, SOLID_PP):
+        if not path.exists():
+            print(f"note: {path.name} not found, its parts come from the configurator model")
+    from_solid = {role for _path, roles in solids for role in roles.values()}
+    stand_up = stand_up_matrix()
+
     bpy.ops.import_scene.gltf(filepath=str(SRC))
-    # The configurator writes a Y-up model into a glTF that the importer then
-    # converts again, so the machine arrives lying on its back: up is +Y and the
-    # front faces -Z. Stand it up and put the floor at zero.
-    stand_up = Matrix.Translation((0, 0, CAD_FLOOR)) @ Matrix.Rotation(math.radians(90), 4, "X")
     bpy.context.view_layer.update()
     parts = {}
     for ob in list(bpy.data.objects):
         if ob.type != "MESH":
             continue
         role = CAD_PARTS.get(ob.data.name.rsplit(".", 1)[0])
-        if role is None:
+        if role is None or role in from_solid:
             bpy.data.objects.remove(ob)
             continue
-        ob.data.transform(stand_up @ ob.matrix_world)
-        ob.parent = None
-        ob.matrix_world = Matrix()
-        for coll in list(ob.users_collection):
-            coll.objects.unlink(ob)
-        COLL.objects.link(ob)
+        adopt(ob, stand_up)
         parts[role] = ob
     for ob in [o for o in bpy.data.objects if o.type == "EMPTY"]:
         bpy.data.objects.remove(ob)
-    missing = set(CAD_PARTS.values()) - set(parts)
+
+    for path, roles in solids:
+        kept = set(parts.values())
+        bpy.ops.import_scene.gltf(filepath=str(path))
+        bpy.context.view_layer.update()
+        found = {}
+        for ob in [o for o in bpy.data.objects if o.type == "MESH" and o not in kept]:
+            role = roles.get(solid_occurrence(ob))
+            if role is None:
+                bpy.data.objects.remove(ob)
+                continue
+            adopt(ob, stand_up)
+            found.setdefault(role, []).append(ob)
+        for ob in [o for o in bpy.data.objects if o.type == "EMPTY"]:
+            bpy.data.objects.remove(ob)
+        for role, obs in found.items():
+            parts[role] = join(obs, role)
+    if "wips" in parts:
+        # The tool-setting probe is a few centimetres of very finely
+        # tessellated detail; a tenth of its triangles reads the same.
+        decimate(parts["wips"], 0.12)
+
+    expected = set(CAD_PARTS.values()) | from_solid
+    missing = expected - set(parts)
     if missing:
         raise SystemExit(f"CAD is missing parts: {sorted(missing)}")
     return parts
+
+
+def solid_occurrence(ob):
+    """The NAUO number of the STEP occurrence a mesh belongs to."""
+    p = ob
+    while p:
+        if p.name.upper().startswith("NAUO"):
+            digits = "".join(ch for ch in p.name[4:] if ch.isdigit())
+            return int(digits) if digits else None
+        p = p.parent
+    return None
+
+
+def join(obs, name):
+    """One object for a part the solid model splits into several meshes."""
+    if len(obs) == 1:
+        obs[0].name = name
+        return obs[0]
+    with bpy.context.temp_override(active_object=obs[0], selected_editable_objects=obs, selected_objects=obs):
+        bpy.ops.object.join()
+    obs[0].name = name
+    return obs[0]
+
+
+def bevel_edges(ob, width, segments, angle=math.radians(35)):
+    """Rounds every edge sharper than `angle`, keeping the faces flat."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
+    bm.to_mesh(ob.data)
+    bm.free()
+    mod = ob.modifiers.new("bevel", "BEVEL")
+    mod.width = width
+    mod.segments = segments
+    mod.limit_method = "ANGLE"
+    mod.angle_limit = angle
+    mod.harden_normals = True
+    mod.use_clamp_overlap = True
+    with bpy.context.temp_override(object=ob, active_object=ob):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def decimate(ob, ratio):
+    mod = ob.modifiers.new("decimate", "DECIMATE")
+    mod.ratio = ratio
+    with bpy.context.temp_override(object=ob, active_object=ob):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
 def components(bm):
@@ -425,6 +601,25 @@ def strip_faces(ob, doomed_fn):
     return len(doomed)
 
 
+def split_off(ob, pick_fn, name):
+    """Moves the faces of `ob` whose centre `pick_fn` accepts into a new
+    object; `ob` keeps the rest."""
+    part = ob.copy()
+    part.data = ob.data.copy()
+    part.name = name
+    COLL.objects.link(part)
+    strip_faces(part, lambda c: not pick_fn(c))
+    strip_faces(ob, pick_fn)
+    return part
+
+
+def pivot(name, parent, matrix, size=0.02):
+    ob = bpy.data.objects.new(name, None)
+    ob.empty_display_type = "ARROWS"
+    ob.empty_display_size = size
+    return link(ob, parent, matrix)
+
+
 def assign_faces(ob, mat_index, pick_fn):
     for poly in ob.data.polygons:
         if pick_fn(Vector(poly.center)):
@@ -470,15 +665,20 @@ def build():
         ("base", "Base", ["casting"]),
         ("pads", "LevelingPads", ["rubber"]),
         ("tank", "CoolantTank", ["casting"]),
-        ("tool_changer", "ToolChanger", ["head"]),
-        ("tc_arm", "ToolChangerArm", ["casting_light"]),
+        ("wips", "ToolSetter", ["steel"]),
     ):
+        if role not in cad:
+            continue
         ob = cad[role]
         ob.name = name
         set_mats(ob, *(M[m] for m in mats))
         reparent_keep_world(ob, root)
     cad["enclosure"]["part"] = "enclosure"
-    cad["tool_changer"]["part"] = "tool_changer"
+    # Folded sheet metal has rounded edges that catch the light; the
+    # configurator's panels meet at knife edges, which is most of why the
+    # enclosure read as a box.
+    bevel_edges(cad["enclosure"], 0.006, 2)
+    build_tool_changer(cad["tool_changer"], cad["tc_arm"], root, M)
 
     side = cad["side_window"]
     side.name = "SideWindow"
@@ -556,10 +756,75 @@ def build():
     cy = (min(p.y for p in pts) + max(p.y for p in pts)) / 2
     root.location = (-round(cx, 4), -round(cy, 4), 0)
 
-    for name in RIG_NODES:
+    pockets = [f"{k}_{p:02d}" for p in range(1, TC_POCKETS + 1) for k in ("Pocket", "PocketTool")]
+    for name in (*RIG_NODES, *pockets):
         if name not in bpy.data.objects:
             raise SystemExit(f"rig node {name} was not built")
     return root
+
+
+def build_tool_changer(changer, arm_cad, root, M):
+    """The SMTC split into what moves: the carousel turning on its axis, a
+    pocket at each of its 30 places that tilts down when it is at the station,
+    and the double arm turning and dropping on its own axis. Every pocket and
+    both ends of the arm carry an empty the app hangs a tool from: its origin
+    is the tool's gauge line and its local +Z points from the tip back to the
+    taper (three.js +Y, the way a tool hangs from the spindle)."""
+    ax = TC_CAROUSEL_AXIS
+
+    def ring(c):
+        return math.hypot(c.y - ax.y, c.z - ax.z)
+
+    # The CAD's pocket sleeves are one with the wheel; they are rebuilt below,
+    # one per pocket, so each can tilt on its own.
+    removed = strip_faces(changer, lambda c: c.x < TC_POCKET_INNER_X and 0.285 < ring(c) < 0.355)
+    wheel = split_off(changer, lambda c: c.x < -0.845, "CarouselWheel")
+    changer.name = "ToolChanger"
+    set_mats(changer, M["head"])
+    changer["part"] = "tool_changer"
+    reparent_keep_world(changer, root)
+
+    carousel = empty("ToolChanger_Carousel", root, ax)
+    carousel["part"] = "tool_changer"
+    set_mats(wheel, M["head"])
+    reparent_keep_world(wheel, carousel)
+
+    step = 2 * math.pi / TC_POCKETS
+    at_station = TC_POCKET_PIVOT - ax
+    mouth = Vector((TC_POCKET_MOUTH_X, ax.y, ax.z - TC_POCKET_RADIUS)) - TC_POCKET_PIVOT
+    length = TC_POCKET_INNER_X - TC_POCKET_MOUTH_X
+    for p in range(1, TC_POCKETS + 1):
+        # Pocket p sits p - 1 steps round from the station about +X, so turning
+        # the carousel by -(p - 1) steps brings it down to the arm.
+        turn = Matrix.Rotation((p - 1) * step, 4, "X")
+        pocket = pivot(f"Pocket_{p:02d}", carousel, turn @ Matrix.Translation(at_station))
+        sleeve = Geo()
+        # One material: thirty pockets are thirty draw calls, not sixty.
+        # Open at the mouth like the solid model's pockets: an empty pocket
+        # shows its bore, a full one the tool's flange over it.
+        sleeve.tube(TC_POCKET_BORE, TC_POCKET_BORE - 0.007, length, 0.03, (mouth.x + length / 2, 0, mouth.z), 0, axis="X")
+        sleeve.box((0.012, 0.016, 0.010), (mouth.x + 0.010, 0, mouth.z + TC_POCKET_BORE), 0)
+        sleeve.build(f"PocketSleeve_{p:02d}", [M["casting_light"]], pocket)
+        pivot(f"PocketTool_{p:02d}", pocket, Matrix.Translation(mouth) @ Matrix.Rotation(math.pi / 2, 4, "Y"))
+
+    # The double arm is the plate and hub under the cam box.
+    arm_mesh = split_off(
+        arm_cad,
+        lambda c: c.z < 1.405 and math.hypot(c.x - TC_ARM_PIVOT.x, c.y - TC_ARM_PIVOT.y) < 0.33,
+        "ToolChangerArm",
+    )
+    arm_cad.name = "ToolChangerCambox"
+    set_mats(arm_cad, M["casting_light"])
+    arm_cad["part"] = "tool_changer"
+    reparent_keep_world(arm_cad, root)
+    arm = empty("ToolChanger_Arm", root, TC_ARM_PIVOT)
+    arm["part"] = "tool_changer"
+    set_mats(arm_mesh, M["casting_light"])
+    reparent_keep_world(arm_mesh, arm)
+    # Home is along Y; turned -90 deg about Z, end A is over the spindle.
+    empty("ArmGrip_A", arm, (0, TC_ARM_REACH, 0), size=0.02)
+    empty("ArmGrip_B", arm, (0, -TC_ARM_REACH, 0), size=0.02)
+    print(f"tool changer: removed {removed} CAD pocket faces, {len(arm_mesh.data.polygons)} arm faces")
 
 
 def build_door(door, root, M):
@@ -839,6 +1104,13 @@ def export(root):
         export_format="GLB",
         export_extras=True,
         export_yup=True,
+        # Draco: the solid model's detail at a fifth of the size. The app
+        # decodes it with three's decoder, served from public/draco/.
+        export_draco_mesh_compression_enable=True,
+        export_draco_mesh_compression_level=6,
+        export_draco_position_quantization=14,
+        export_draco_normal_quantization=10,
+        export_draco_texcoord_quantization=12,
         export_animations=False,
         export_cameras=False,
         export_lights=False,
@@ -900,6 +1172,25 @@ def preview(root, out_dir):
     shot("trunnion_tilt_neg", (0.2, -2.4, 1.3), (0, -0.5, 0.85), 45)
     o["Axis_B"].rotation_euler.y = math.radians(30)
     shot("trunnion_tilt_pos", (0.2, -2.4, 1.3), (0, -0.5, 0.85), 45)
+
+    # Tool change: head at the change position (X-610 Y-82 Z0), the station
+    # pocket down, the arm on both tools; then dropped and half way round.
+    o["Axis_X"].location.x = (-610 + 53) / 1000
+    o["Axis_Y"].location.y = -0.082
+    o["Axis_Z"].location.z = 0.259
+    o["Axis_B"].rotation_euler.y = 0
+    o["Pocket_01"].rotation_euler.y = -math.pi / 2
+    o["ToolChanger_Arm"].rotation_euler.z = -math.pi / 2
+    shot("toolchange_grip", (-0.05, -1.75, 1.75), (-0.62, -0.41, 1.36), 40)
+    shot("toolchange_grip_top", (-0.61, -0.41, 3.2), (-0.61, -0.41, 1.3), 40)
+    o["ToolChanger_Arm"].location.z -= 0.12
+    o["ToolChanger_Arm"].rotation_euler.z = -math.pi
+    shot("toolchange_swing", (-0.05, -1.75, 1.75), (-0.62, -0.41, 1.36), 40)
+    o["Pocket_01"].rotation_euler.y = 0
+    o["ToolChanger_Arm"].location.z += 0.12
+    o["ToolChanger_Arm"].rotation_euler.z = 0
+    o["ToolChanger_Carousel"].rotation_euler.x = math.radians(-36)
+    shot("toolchange_carousel", (-2.2, -0.9, 1.9), (-0.9, -0.41, 1.7), 40)
 
 
 if __name__ == "__main__":

@@ -10,10 +10,17 @@ import type { MachineState } from "@/entities/machine/machine-types";
  */
 export type StepPhase = {
   id: string;
-  instruction: string;
+  /** Text, or text read off the machine — "the tip is 0.35 mm above the part". */
+  instruction: string | ((machine: MachineState) => string);
   highlight: MachinePartId[];
+  /** Keys of the full NGC panel to light (ngc-layout ids). The panel's FULL
+   *  PANEL key is lit too while the panel is closed. */
+  keys?: string[];
   done: (machine: MachineState) => boolean;
 };
+
+export const instructionOf = (phase: StepPhase, machine: MachineState) =>
+  typeof phase.instruction === "function" ? phase.instruction(machine) : phase.instruction;
 
 /**
  * A step's safety condition: what must remain true on the machine once the

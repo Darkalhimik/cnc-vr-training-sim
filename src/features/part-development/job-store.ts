@@ -33,6 +33,9 @@ type JobStore = {
   setProgram: (text: string) => void;
   setWorkspaceOpen: (open: boolean) => void;
   setTab: (tab: WorkspaceTab) => void;
+  /** Swap the whole job — a level's part, or free play's own coming back.
+   *  Without a program, the CAM writes one from the design. */
+  loadJob: (design: PartDesign, program?: string) => void;
 };
 
 /** A sensible first version of each feature, so "add" gives something to edit. */
@@ -98,6 +101,15 @@ export const useJobStore = create<JobStore>((set, get) => {
     },
     setProgram: (text) => set({ program: text, programEdited: true }),
     setWorkspaceOpen: (open) => set({ workspaceOpen: open }),
+    loadJob: (design, program) => {
+      const result = generateProgram(design);
+      set({
+        design,
+        program: program ?? result.text,
+        programEdited: program !== undefined,
+        camWarnings: result.warnings,
+      });
+    },
     setTab: (tab) => set({ tab }),
   };
 });

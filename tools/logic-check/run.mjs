@@ -1,4 +1,4 @@
-// Scenario checks for the machine, the NGC control and the startup tutorial:
+// Scenario checks for the machine, the NGC control and the tutorials:
 // the reducer in src/entities/machine, the tutorial engine and steps, and the
 // program playback driving an interpreted program.
 //
@@ -29,6 +29,7 @@ const files = [
   "src/features/part-development/program-check.ts",
   "src/features/cnc-tutorial/tutorial-engine.ts",
   "src/features/cnc-tutorial/steps/index.ts",
+  "src/features/levels/tutorials.ts",
   "src/entities/nc/index.ts",
 ];
 const tsconfig = join(temp, "tsconfig.json");
@@ -496,6 +497,280 @@ scenario("17. Program check: the sample job is clean on the ideal setup; unmeasu
   for (const t of TOOL_LIBRARY) tools[t.number] = { ...tools[t.number], length: t.length, lengthWear: 0, diameter: t.diameter };
   store().setOffsets({ tools });
   assert.deepEqual(checkProgram(text, d, "machine", store().machine).crashes, []);
+});
+
+scenario("18. M06 through the side-mount changer: head to the arm, random pockets, feed hold, keypad changes", () => {
+  const TC = require(join(out, "entities/machine/tool-changer.js"));
+  readyStore({ position: { x: -300, y: -200, z: -100, b: 0, c: 0 } });
+  let m = store().machine;
+  assert.equal(m.toolInSpindle, 2);
+  assert.equal(m.pockets[1], 0, "T2's own pocket is empty while T2 is in the spindle");
+  assert.equal(m.carouselPocket, 2);
+
+  runProgram("T3 M06\nT2 M06\nM30");
+  const { motions } = getActiveRun().result;
+  const changes = motions.filter((x) => x.kind === "toolChange");
+  // T3 is one pocket round; T2 then comes back out of pocket 3, where T3 goes.
+  assert.deepEqual(changes.map((c) => [c.tool, c.from, c.pocket, c.index]), [[3, 2, 3, 1], [2, 3, 3, 0]]);
+  // Z clears first, then X/Y go to the arm (Setting 247 OFF).
+  const rapids = motions.filter((x) => x.kind === "rapid").map((x) => [x.to.x, x.to.y, x.to.z]);
+  assert.deepEqual(rapids, [[-300, -200, 0], [-610, -82, 0]]);
+
+  const c = changes[0];
+  const pose = (s) => TC.changerPose(c, s);
+  assert.equal(pose(c.indexSeconds / 2).phase, "index");
+  const swing = pose(c.indexSeconds + 0.56 * (c.seconds - c.indexSeconds));
+  assert.deepEqual([swing.phase, swing.outgoing, swing.incoming, swing.armDown], ["swing", "arm", "arm", 1]);
+  const end = pose(c.seconds);
+  assert.deepEqual([end.outgoing, end.incoming, end.pocketDown, end.armDown, end.arm], ["pocket", "spindle", 0, 0, -180]);
+
+  assert.equal(play(), "idle");
+  m = store().machine;
+  assert.equal(m.toolInSpindle, 2);
+  assert.equal(m.pockets[2], 3, "T3 went back into pocket 3");
+  assert.equal(m.pockets[1], 0, "pocket 2 stays empty");
+  assert.equal(m.carouselPocket, 3);
+  assert.deepEqual([m.position.x, m.position.y, m.position.z], [-610, -82, 0]);
+
+  // FEED HOLD stops a change in progress (mcode.md §5.3); CYCLE START finishes it.
+  runProgram("T5 M06\nM30");
+  let held = null;
+  for (let i = 0; i < 400 && !held; i++) {
+    play(0.05);
+    const at = R.activeToolChange(getActiveRun());
+    if (at && at.elapsed > 0.5) {
+      store().operate("feed_hold");
+      held = { ...getActiveRun().cursor };
+    }
+  }
+  assert.ok(held, "never reached the tool change");
+  assert.equal(play(), "hold");
+  assert.deepEqual(getActiveRun().cursor, held);
+  assert.equal(store().machine.toolInSpindle, 2);
+  store().operate("cycle_start");
+  assert.equal(play(), "idle");
+  assert.equal(store().machine.toolInSpindle, 5);
+
+  // Keypad changes play the same M06: ATC FWD in MDI (next tool round, or a
+  // typed Tnn), NEXT TOOL in HANDLE JOG. Neither counts as a program run.
+  const done = store().machine.lastProgramDone;
+  store().pressKey("MDI");
+  assert.equal(store().pressKey("ATC_FWD").next.runSource, "atc");
+  assert.equal(play(), "idle");
+  assert.equal(store().machine.toolInSpindle, 6);
+  useMachineStore.setState({ machine: { ...store().machine, input: "T1" } });
+  store().pressKey("ATC_REV");
+  assert.equal(play(), "idle");
+  assert.equal(store().machine.toolInSpindle, 1);
+  store().pressKey("HANDLE_JOG");
+  store().pressKey("NEXT_TOOL");
+  assert.equal(play(), "idle");
+  m = store().machine;
+  assert.equal(m.toolInSpindle, 2);
+  assert.equal(m.lastProgramDone, done);
+  assert.equal(m.mode, "jog");
+  assert.match(store().pressKey("ATC_FWD").rejected ?? "", /works in MDI/);
+  useMachineStore.setState({ machine: { ...store().machine, doorOpen: true } });
+  assert.match(store().pressKey("NEXT_TOOL").rejected ?? "", /Close the door/);
+  // Every tool is somewhere, once.
+  m = store().machine;
+  const placed = [...m.pockets.filter(Boolean), m.toolInSpindle].sort((a, b) => a - b);
+  assert.deepEqual(placed, TOOL_LIBRARY.map((t) => t.number));
+});
+
+scenario("19. Every tutorial level can be played to the end by doing what it says", () => {
+  const { TUTORIALS } = require(join(out, "features/levels/tutorials.js"));
+  const { useJobStore } = require(join(out, "features/part-development/job-store.js"));
+  const { idealWorkOffset } = require(join(out, "entities/part/setup.js"));
+  const blank = { x: 80, y: 60, z: 30, material: "aluminium" };
+  const p = idealWorkOffset(blank);
+  const op = (part, sign) => store().operate(part, sign);
+  const key = (k) => store().pressKey(k);
+  const CHAR = { " ": "SPACE", ".": "DOT", "-": "MINUS", ";": "EOB" };
+  const type = (text) => {
+    for (const ch of text) key(/[A-Z]/.test(ch) ? `ALPHA_${ch}` : /\d/.test(ch) ? `NUM_${ch}` : CHAR[ch]);
+  };
+  // The store's own timers are real ones; a scenario runs them by hand.
+  const finishHoming = () => {
+    for (let i = 0; i < 10 && store().machine.homingStage !== null; i++) {
+      useMachineStore.setState({ machine: L.reduce(store().machine, { type: "timer", timer: "homing" }).next });
+    }
+  };
+  /** Jog the selected axis with the handwheel at 1 mm per detent (10 per click). */
+  const jogTo = (axis, target) => {
+    op(`axis_${axis}`);
+    key("INC_1");
+    const clicks = Math.round((target - store().machine.position[axis]) / 10);
+    for (let i = 0; i < Math.abs(clicks); i++) op("handwheel", Math.sign(clicks));
+  };
+  const gap = () => store().machine.position.z - (p.z + TOOL_LIBRARY.find((t) => t.number === store().machine.toolInSpindle).length);
+  /** Down onto the part the way the tutorial teaches: coarse, then finer, to a paper's thickness. */
+  const touchOff = () => {
+    op("axis_z");
+    for (const [inc, stop] of [["INC_1", 15], ["INC_01", 1.05], ["INC_001", 0.1]]) {
+      key(inc);
+      for (let i = 0; i < 200 && gap() > stop; i++) op("handwheel", -1);
+    }
+    assert.ok(gap() >= 0 && gap() <= 0.1, `touch-off ended ${gap().toFixed(3)} mm above the part`);
+  };
+
+  function playLevel(id, script) {
+    const t = TUTORIALS[id];
+    t.prepare();
+    let cursor = { stepIndex: 0, phaseIndex: 0, status: "active", reached: 0 };
+    const violations = [];
+    const sync = () => {
+      const r = advanceTutorial(t.steps, cursor, store().machine);
+      cursor = r.cursor;
+      if (r.violation) violations.push(r.violation);
+    };
+    const offMachine = useMachineStore.subscribe(sync);
+    const offJob = useJobStore.subscribe(sync);
+    sync();
+    try {
+      script();
+    } finally {
+      offMachine();
+      offJob();
+    }
+    const at = cursor.status === "complete" ? "complete" : `${t.steps[cursor.stepIndex].id}/${t.steps[cursor.stepIndex].phases[cursor.phaseIndex].id}`;
+    assert.equal(at, "complete", `${id} stopped at ${at}`);
+    assert.deepEqual(violations, [], `${id} sent the trainee back`);
+  }
+
+  playLevel("umc500.tutorial.jog", () => {
+    op("hand_jog");
+    jogTo("x", -100);
+    jogTo("y", -80);
+    op("axis_z");
+    key("INC_001");
+    for (let i = 0; i < 5; i++) op("handwheel", -1);
+    key("INC_1");
+    jogTo("b", 30);
+    jogTo("c", 90);
+    op("power_up");
+    finishHoming();
+  });
+
+  playLevel("umc500.tutorial.work-offset", () => {
+    store().setStock({ size: [80, 60, 30], material: "aluminium" });
+    op("door");
+    key("OFFSET");
+    if (store().machine.offsetTab !== "work") key("OFFSET");
+    type(p.x.toFixed(3));
+    key("F1");
+    key("RIGHT");
+    type(p.y.toFixed(3));
+    key("F1");
+  });
+
+  playLevel("umc500.tutorial.tool-length", () => {
+    op("hand_jog");
+    jogTo("x", p.x);
+    jogTo("y", p.y);
+    touchOff();
+    key("TOOL_OFFSET_MEASURE");
+    key("NEXT_TOOL");
+    assert.equal(play(), "idle");
+    assert.equal(store().machine.toolInSpindle, 3);
+    jogTo("x", p.x);
+    jogTo("y", p.y);
+    touchOff();
+    key("TOOL_OFFSET_MEASURE");
+  });
+
+  playLevel("umc500.tutorial.mdi", () => {
+    key("MDI");
+    type("G00 G90 G54 X0 Y0");
+    key("INSERT");
+    op("cycle_start");
+    assert.equal(play(), "idle");
+    type("S1500 M03");
+    key("INSERT");
+    op("cycle_start");
+    assert.equal(play(), "idle");
+    key("ERASE_PROGRAM");
+  });
+
+  playLevel("umc500.tutorial.first-program", () => {
+    key("LIST_PROGRAM");
+    while (L.sortedPrograms(store().machine)[store().machine.offsetCursor.row] !== "O02001") key("UP");
+    key("SELECT_PROGRAM");
+    key("SINGLE_BLOCK");
+    key("RAPID_25");
+    key("MEMORY");
+    op("cycle_start");
+    for (let i = 0; i < 60 && store().machine.programLine < 12; i++) {
+      play();
+      op("cycle_start");
+    }
+    play();
+    key("SINGLE_BLOCK");
+    key("RAPID_100");
+    op("cycle_start");
+    play(1);
+    op("feed_hold");
+    op("cycle_start");
+    assert.equal(play(), "idle");
+  });
+
+  playLevel("umc500.tutorial.gcode-basics", () => {
+    const job = useJobStore.getState();
+    job.setProgram(job.program.replace("(YOUR MOVES HERE)", "G01 X30.\nY20.\nG03 X-30. R30.\nG01 Y-20."));
+    store().loadProgram("O02002", useJobStore.getState().program);
+    key("MEMORY");
+    op("cycle_start");
+    assert.equal(play(), "idle");
+  });
+});
+
+scenario("20. Tool crib: the standard set is as the levels were built on; a loadout is checked against the changer; the CAM picks from what is loaded", () => {
+  const lib = require(join(out, "entities/part/tool-library.js"));
+  const { checkLoadout, STANDARD_LOADOUT } = require(join(out, "entities/tooling/loadout.js"));
+  const { CRIB } = require(join(out, "entities/tooling/catalog.js"));
+  const { MACHINES } = require(join(out, "entities/catalog/machines.js"));
+  const spec = MACHINES[0].tooling;
+  const slots = (pairs) => pairs.map(([number, assembly]) => ({ number, assembly }));
+
+  // T1–T8 keep the sizes tasks, CAM and holder-crash checks were tuned on.
+  assert.deepEqual(
+    lib.TOOL_LIBRARY.map((t) => [t.number, t.length, t.stickout, t.holderDiameter, t.diameter, t.fluteLength]),
+    [[1, 72, 30, 50, 50, 6], [2, 95, 38, 32, 10, 22], [3, 88, 30, 28, 6, 16], [4, 82, 28, 28, 10, 8],
+     [5, 110, 60, 24, 5, 52], [6, 118, 68, 24, 6.8, 63], [7, 126, 78, 26, 8.5, 75], [8, 90, 32, 28, 6, 14]],
+  );
+  assert.deepEqual(checkLoadout(STANDARD_LOADOUT, spec), []);
+  for (const t of CRIB) assert.deepEqual(checkLoadout(slots([[15, t.id]]), spec), [], `${t.id} fits on its own`);
+
+  // A large tool needs both neighbours empty, and pockets wrap round.
+  const large = (n, others) => checkLoadout(slots([[n, "face-80"], ...others.map((o) => [o, "em-6"])]), spec).length;
+  assert.equal(large(10, [8, 12]), 0);
+  assert.equal(large(10, [9]), 1);
+  assert.equal(large(10, [11]), 1);
+  assert.equal(large(1, [30]), 1);
+  assert.equal(large(30, [1]), 1);
+  // Out of the changer, twice in the table, not in the crib, or over a limit.
+  assert.equal(checkLoadout(slots([[31, "em-6"]]), spec).length, 1);
+  assert.equal(checkLoadout(slots([[2, "em-6"], [2, "em-10"]]), spec).length, 1);
+  assert.equal(checkLoadout(slots([[2, "no-such-tool"]]), spec).length, 1);
+  assert.equal(checkLoadout(slots([[3, "drill-12"]]), { ...spec, maxLength: 150 }).length, 1);
+  assert.equal(checkLoadout(slots([[3, "face-80"]]), { ...spec, maxMass: 2 }).length, 1);
+  assert.equal(checkLoadout(slots([[3, "em-6"]]), { ...spec, interface: "BT40" }).length, 1);
+
+  // The sample job with another set loaded: no spot drill, a bigger face
+  // mill and end mill. The CAM uses what is there and says what is missing.
+  const d = design.SAMPLE_DESIGN;
+  try {
+    lib.setActiveTools(lib.loadoutTools(slots([[1, "face-63"], [2, "em-12"], [3, "em-6"], [5, "drill-5.0"], [6, "drill-6.8"]])));
+    const result = cam.generateProgram(d);
+    const used = [...new Set(result.text.match(/T\d+ M06/g))].sort();
+    assert.deepEqual(used, ["T1 M06", "T2 M06", "T3 M06", "T5 M06", "T6 M06"]);
+    assert.ok(result.warnings.some((w) => w.includes("no spot drill")), result.warnings.join("; "));
+    assert.ok(!/T4 M06/.test(result.text));
+  } finally {
+    lib.setActiveTools(lib.TOOL_LIBRARY);
+  }
+  // Back on the standard set the sample job spots its holes with T4.
+  assert.ok(/T4 M06/.test(cam.generateProgram(d).text));
 });
 
 rmSync(temp, { recursive: true, force: true });

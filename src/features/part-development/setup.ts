@@ -3,7 +3,7 @@
 import { useMachineStore } from "@/entities/machine/machine-store";
 import type { MachineState } from "@/entities/machine/machine-types";
 import { idealWorkOffset } from "@/entities/part/setup";
-import { TOOL_LIBRARY } from "@/entities/part/tool-library";
+import { activeTools } from "@/entities/part/tool-library";
 import type { PartDesign } from "@/entities/part/part-design";
 import { useJobStore } from "./job-store";
 
@@ -91,7 +91,7 @@ export function setupSteps(m: MachineState, design: PartDesign, program: string)
         label: "Tool setter",
         run: () => {
           const next = { ...store().machine.tools };
-          for (const t of TOOL_LIBRARY) next[t.number] = { ...next[t.number], length: t.length, lengthWear: 0, diameter: t.diameter };
+          for (const t of activeTools()) next[t.number] = { ...next[t.number], length: t.length, lengthWear: 0, diameter: t.diameter };
           store().setOffsets({ tools: next });
           return null;
         },

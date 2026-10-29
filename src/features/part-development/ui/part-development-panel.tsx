@@ -11,12 +11,13 @@ import { useSessionStore } from "@/features/session/session-store";
 import { useJobStore } from "../job-store";
 import { programName, setupSteps } from "../setup";
 import { useStockRegistry } from "../stock-registry";
+import { SavePartButton } from "@/features/warehouse/save-part-button";
 
 /**
- * Section body, not a card. Part development's home in the side panel: the
- * job at a glance, the setup checklist read off the machine, and the way into
- * the workspace. Designing and editing are desktop work; on a headset this
- * section is what the trainee sees.
+ * Section body, not a card. Free play's job in the side panel: the part at a
+ * glance, the setup checklist read off the machine, the way into the
+ * workspace, and the warehouse once something is cut. Designing and editing
+ * are desktop work; on a headset this section is what the trainee sees.
  */
 export function PartDevelopmentPanel() {
   const machine = useMachineStore((s) => s.machine);
@@ -98,8 +99,9 @@ export function PartDevelopmentPanel() {
             View vise
           </Button>
         )}
+        {machine.stock && <SavePartButton machineId="umc500" />}
         {machine.stock && (
-          <Button size="md" variant="secondary" onClick={exportStl} disabled={!removal}>
+          <Button size="md" variant="ghost" onClick={exportStl} disabled={!removal}>
             Export STL
           </Button>
         )}

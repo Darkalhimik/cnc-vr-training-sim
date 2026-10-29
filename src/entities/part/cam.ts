@@ -25,7 +25,7 @@ import {
   faceSize,
   validateDesign,
 } from "./part-design";
-import { MATERIALS, TOOL_LIBRARY, cuttingData, type LibraryTool } from "./tool-library";
+import { MATERIALS, activeTools, cuttingData, type LibraryTool } from "./tool-library";
 
 /** Clearance above the face for rapids, and the plane rapids return to. */
 const CLEARANCE = 25;
@@ -117,12 +117,16 @@ function planeOf(face: Face): { code: string; arcCcwSeenFromOutside: "G2" | "G3"
   }
 }
 
-function pickEndMill(maxDiameter: number): LibraryTool | null {
-  const mills = TOOL_LIBRARY.filter((t) => t.kind === "flat" && t.diameter <= maxDiameter + 1e-6);
-  return mills.sort((a, b) => b.diameter - a.diameter)[0] ?? null;
+// Tools come from what is loaded in the machine: the standard set in a
+// level, the machine's own loadout in free play.
+
+/** The largest tool of a kind no wider than `maxDiameter`. */
+function pickLargest(kind: LibraryTool["kind"], maxDiameter = Infinity): LibraryTool | null {
+  const fits = activeTools().filter((t) => t.kind === kind && t.diameter <= maxDiameter + 1e-6);
+  return fits.sort((a, b) => b.diameter - a.diameter)[0] ?? null;
 }
 
-const tool = (n: number) => TOOL_LIBRARY.find((t) => t.number === n)!;
+const pickEndMill = (maxDiameter: number) => pickLargest("flat", maxDiameter);
 
 /** Depth levels from 0 to `depth` in steps no larger than `step`. */
 function levels(depth: number, step: number): number[] {
@@ -378,14 +382,18 @@ export function generateProgram(design: PartDesign): CamResult {
     if (feats.length === 0) continue;
     for (const f of feats) {
       if (f.kind === "face") {
-        const t = tool(1);
-        steps.push({ face, label: "Face", tool: t, featureId: f.id, run: (c) => facing(c, f, t) });
+        // A face mill if one is loaded, else the largest end mill.
+        const t = pickLargest("face") ?? pickLargest("flat");
+        if (!t) warnings.push(`${FACE_LABEL[face]} facing: no face mill or end mill in the carousel.`);
+        else steps.push({ face, label: "Face", tool: t, featureId: f.id, run: (c) => facing(c, f, t) });
       }
     }
     for (const f of feats) {
       if (f.kind === "contour") {
-        const t = tool(2);
-        steps.push({ face, label: "Outside contour", tool: t, featureId: f.id, run: (c) => contour(c, f, t, t.number) });
+        // The stiffest end mill loaded.
+        const t = pickLargest("flat");
+        if (!t) warnings.push(`${FACE_LABEL[face]} contour: no end mill in the carousel.`);
+        else steps.push({ face, label: "Outside contour", tool: t, featureId: f.id, run: (c) => contour(c, f, t, t.number) });
       }
     }
     for (const f of feats) {
@@ -406,17 +414,20 @@ export function generateProgram(design: PartDesign): CamResult {
     const holes = feats.filter((f): f is Extract<Feature, { kind: "hole" }> => f.kind === "hole");
     const byDrill = new Map<LibraryTool, typeof holes>();
     for (const h of holes) {
-      const d = TOOL_LIBRARY.find((t) => t.kind === "drill" && Math.abs(t.diameter - h.diameter) < 0.051);
+      const drills = activeTools().filter((t) => t.kind === "drill");
+      const d = drills.find((t) => Math.abs(t.diameter - h.diameter) < 0.051);
       if (!d) {
-        warnings.push(`${FACE_LABEL[face]} hole Ø${h.diameter}: no drill of that size in the carousel (5.0, 6.8, 8.5 mm).`);
+        const sizes = drills.map((t) => t.diameter.toFixed(1)).join(", ") || "none";
+        warnings.push(`${FACE_LABEL[face]} hole Ø${h.diameter}: no drill of that size in the carousel (${sizes} mm).`);
         continue;
       }
       byDrill.set(d, [...(byDrill.get(d) ?? []), h]);
     }
     const drillable = [...byDrill.values()].flat();
     if (drillable.length > 0) {
-      const spot = tool(4);
-      steps.push({ face, label: "Spot drill", tool: spot, featureId: drillable[0].id, run: (c) => drill(c, drillable, spot, true) });
+      const spot = pickLargest("spot");
+      if (!spot) warnings.push(`${FACE_LABEL[face]} holes: no spot drill in the carousel, so they are drilled unspotted.`);
+      else steps.push({ face, label: "Spot drill", tool: spot, featureId: drillable[0].id, run: (c) => drill(c, drillable, spot, true) });
     }
     for (const [d, hs] of byDrill) {
       steps.push({ face, label: `Drill Ø${d.diameter}`, tool: d, featureId: hs[0].id, run: (c) => drill(c, hs, d, false) });

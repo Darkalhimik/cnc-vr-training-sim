@@ -30,7 +30,7 @@ export function FreePlayOverlay() {
           </Badge>
         </Button>
         <Button size="md" variant="secondary" onClick={reset}>
-          Reset machine
+          Cold start
         </Button>
       </div>
 

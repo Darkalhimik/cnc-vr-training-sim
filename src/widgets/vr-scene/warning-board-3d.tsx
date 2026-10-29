@@ -1,18 +1,15 @@
 "use client";
 
-import { RoundedBox, Text } from "@react-three/drei";
-import type { ThreeEvent } from "@react-three/fiber";
 import {
   type NotificationVariant,
   useNotifications,
 } from "@/shared/lib/notifications";
-import { PANEL, TONE } from "./panel-theme";
+import { PAD, StackBoard, linesHeight, wrap, type Row } from "./board-kit";
+import { TONE } from "./panel-theme";
 
 const PANEL_W = 1.6;
-const PANEL_H = 0.44;
-const PANEL_DEPTH = 0.04;
-
-const noopRaycast: NonNullable<ThreeEvent<MouseEvent>>["object"]["raycast"] = () => {};
+const BAR = 0.02;
+const TEXT_W = PANEL_W - 2 * PAD - BAR - 0.04;
 
 /** Same mapping the DOM tones use, resolved to hex for three.js materials. */
 const TONE_FOR: Record<NotificationVariant, string> = {
@@ -27,8 +24,8 @@ const TONE_FOR: Record<NotificationVariant, string> = {
  *
  * In an immersive session the DOM HUD is invisible, so a rejected interaction
  * or a tutorial safety violation reached the trainee in no modality at all.
- * This board shows the most recent one beside the machine, in the tone the
- * DOM surface would have used.
+ * This board shows the most recent one over the door, in the tone the DOM
+ * surface would have used. Centred on its position, sized to the message.
  */
 export function WarningBoard3D() {
   const items = useNotifications((s) => s.items);
@@ -37,40 +34,16 @@ export function WarningBoard3D() {
   if (!latest) return null;
 
   const tone = TONE_FOR[latest.variant] ?? TONE.amber;
-  const surfaceZ = PANEL_DEPTH / 2 + 0.001;
+  const h = Math.max(linesHeight(wrap(latest.message, TEXT_W, "body").length, "body"), 0.08);
+  // The tone rides the rim and a bar, not the text background — the same
+  // rule the DOM pills follow, so the message itself stays readable.
+  const message: Row = {
+    h,
+    paint: (p, x, y) => {
+      p.rect(x, y, BAR, h, tone, { radius: 0.005 });
+      p.text(latest.message, x + BAR + 0.04, y, "body", { width: TEXT_W });
+    },
+  };
 
-  return (
-    <group>
-      <RoundedBox args={[PANEL_W, PANEL_H, PANEL_DEPTH]} radius={0.04} raycast={noopRaycast}>
-        <meshStandardMaterial color={PANEL.surface} roughness={0.65} metalness={0.05} />
-      </RoundedBox>
-
-      {/* The tone rides the frame, not the text background — same rule the DOM
-          pills follow, so the message itself stays maximally readable. */}
-      <RoundedBox
-        args={[PANEL_W + 0.012, PANEL_H + 0.012, PANEL_DEPTH * 0.95]}
-        radius={0.04}
-        raycast={noopRaycast}
-      >
-        <meshBasicMaterial color={tone} wireframe />
-      </RoundedBox>
-
-      <mesh position={[-PANEL_W / 2 + 0.05, 0, surfaceZ]} raycast={noopRaycast}>
-        <planeGeometry args={[0.02, PANEL_H - 0.1]} />
-        <meshBasicMaterial color={tone} />
-      </mesh>
-
-      <Text
-        position={[-PANEL_W / 2 + 0.12, 0, surfaceZ]}
-        fontSize={0.052}
-        color={PANEL.text}
-        anchorX="left"
-        anchorY="middle"
-        maxWidth={PANEL_W - 0.22}
-        lineHeight={1.3}
-      >
-        {latest.message}
-      </Text>
-    </group>
-  );
+  return <StackBoard width={PANEL_W} rows={[message]} edge={tone} anchor="center" />;
 }

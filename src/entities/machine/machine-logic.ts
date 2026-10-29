@@ -27,6 +27,7 @@ import {
   spindleRpm,
 } from "./machine-types";
 import type { Halt } from "./program-playback";
+import { afterSwap } from "./tool-changer";
 
 export type TimerKind = "boot" | "homing";
 
@@ -390,8 +391,6 @@ const NOT_SIMULATED = new Set([
   "TOOL_RELEASE",
   "GRAPHICS",
   "HANDLE_SCROLL",
-  "ATC_FWD",
-  "ATC_REV",
   "JOG_LOCK",
   "CHIP_FWD",
   "CHIP_STOP",
@@ -583,15 +582,18 @@ function key(state: MachineState, id: string, shift = false): Outcome {
 
     case "NEXT_TOOL": {
       if (state.mode !== "jog") return no(state, "NEXT TOOL works in HANDLE JOG.");
-      if (state.doorOpen) return no(state, "Close the door for a tool change.");
-      const blocked = motionBlocker(state);
-      if (blocked) return no(state, blocked);
-      const numbers = Object.keys(state.tools).map(Number).sort((a, b) => a - b);
-      const next = numbers[(numbers.indexOf(state.toolInSpindle) + 1) % numbers.length];
-      // M06 clears Z to machine zero first, then swaps.
-      return ok({ ...state, toolInSpindle: next, spindle: SPINDLE_STOPPED, position: { ...state.position, z: 0 } }, {
-        notice: `Tool change: T${next} in the spindle.`,
-      });
+      const next = toolAfter(state, 1);
+      // During touch-off the offset cursor follows the tool (pendant.md).
+      const follow = state.display === "offset" && state.offsetTab === "tool";
+      const at = follow ? { ...state, offsetCursor: { row: next - 1, col: state.offsetCursor.col } } : state;
+      return keypadToolChange(at, next);
+    }
+    case "ATC_FWD":
+    case "ATC_REV": {
+      if (state.mode !== "mdi") return no(state, `${id.replace("_", " ")} works in MDI.`);
+      // "T5" on the input line fetches that tool; otherwise the next one round.
+      const typed = /^T(\d+)$/i.exec(state.input.trim());
+      return keypadToolChange(state, typed ? Number(typed[1]) : toolAfter(state, id === "ATC_FWD" ? 1 : -1));
     }
 
     case "TOOL_OFFSET_MEASURE": {
@@ -671,6 +673,30 @@ function key(state: MachineState, id: string, shift = false): Outcome {
 
   if (NOT_SIMULATED.has(id)) return no(state, `${id.replace(/_/g, " ")}: not simulated yet.`);
   return ok(state);
+}
+
+/** The loaded tool `step` places round from the spindle's, in T order. */
+function toolAfter(state: MachineState, step: 1 | -1): number {
+  const loaded = [...new Set([...state.pockets, state.toolInSpindle])].filter(Boolean).sort((a, b) => a - b);
+  const at = loaded.indexOf(state.toolInSpindle);
+  return loaded[(at + step + loaded.length) % loaded.length] ?? 0;
+}
+
+/** A tool change from the keypad is the M06 a program would run — the head
+ *  goes to the change position and the changer swaps — so it plays through
+ *  the program runner as an "atc" run. */
+function keypadToolChange(state: MachineState, tool: number): Outcome {
+  if (state.doorOpen) return no(state, "Close the door for a tool change.");
+  const blocked = motionBlocker(state);
+  if (blocked) return no(state, blocked);
+  if (!state.homed) return no(state, "Zero return first with POWER UP.");
+  if (running(state)) return no(state, "A program is active. Press RESET first.");
+  if (tool === state.toolInSpindle) return no(state, `T${tool} is already in the spindle.`);
+  if (!state.tools[tool] || !state.pockets.includes(tool)) return no(state, `T${tool} is not in the carousel.`);
+  return ok(
+    { ...state, program: "running", runSource: "atc", atcTool: tool, programLine: 0, input: "" },
+    { run: "start", notice: `Tool change: T${state.toolInSpindle} out, T${tool} in.` },
+  );
 }
 
 /** ENTER adds the typed value to the highlighted offset; F1 replaces it. */
@@ -766,7 +792,14 @@ function runEvent(state: MachineState, event: Motion): Outcome {
     case "coolant":
       return ok({ ...state, coolantOn: event.on && !state.doorOpen });
     case "toolChange":
-      return ok({ ...state, toolInSpindle: event.tool, spindle: SPINDLE_STOPPED });
+      // The arm leaves the outgoing tool in the pocket the new one came from.
+      return ok({
+        ...state,
+        toolInSpindle: event.tool,
+        pockets: afterSwap(state.pockets, event.pocket, state.toolInSpindle),
+        carouselPocket: event.pocket,
+        spindle: SPINDLE_STOPPED,
+      });
     default:
       return ok(state);
   }
@@ -795,7 +828,14 @@ function runHalt(state: MachineState, action: Extract<MachineAction, { type: "ru
           spindle: SPINDLE_STOPPED,
           coolantOn: false,
           warmupDone: state.warmupDone || warmup,
-          lastProgramDone: state.runSource === "mdi" ? "MDI" : state.activeProgram,
+          // A keypad tool change is not a program the operator ran.
+          lastProgramDone:
+            state.runSource === "atc"
+              ? state.lastProgramDone
+              : state.runSource === "mdi"
+                ? "MDI"
+                : state.activeProgram,
+          atcTool: 0,
         },
         { run: "stop" },
       );

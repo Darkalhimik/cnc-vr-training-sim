@@ -9,7 +9,7 @@ import type { MachineState } from "@/entities/machine/machine-types";
 import { setupOf } from "@/entities/machine/program-run";
 import { JAW_GRIP, type PartDesign, type Stock } from "@/entities/part/part-design";
 import { idealWorkOffset } from "@/entities/part/setup";
-import { TOOL_LIBRARY, toolByNumber, type LibraryTool } from "@/entities/part/tool-library";
+import { activeTools, toolByNumber, type LibraryTool } from "@/entities/part/tool-library";
 
 /** Vise body, 140 × 70 mm, and jaws 25 mm thick outside the stock (build_umc500.py). */
 const VISE_BODY: [number, number] = [140, 70];
@@ -31,7 +31,7 @@ export function idealSetup(design: PartDesign): NcSetup {
   return {
     workOffsets: { G54: idealWorkOffset(design.stock) },
     tools: Object.fromEntries(
-      TOOL_LIBRARY.map((t) => [t.number, { number: t.number, length: t.length, diameter: t.diameter }]),
+      activeTools().map((t) => [t.number, { number: t.number, length: t.length, diameter: t.diameter }]),
     ),
     toolInSpindle: 0,
     start: { x: 0, y: 0, z: 0, b: 0, c: 0 },

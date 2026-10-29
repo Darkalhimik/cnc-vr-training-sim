@@ -22,10 +22,14 @@ import {
  *
  * These are the pendant's own colours (docs/haas-ngc/pendant.md §4), not the
  * app's tone scale. The NGC has no key LEDs: modes and toggles show as icons
- * on the screen, so the keys only flash when pressed.
+ * on the screen, so the keys only flash when pressed — the amber ring around
+ * a key a tutorial asks for is the trainer's, the same amber as the
+ * highlighted controls on the machine.
  */
 export type KeypadView = {
   hovered: string | null;
+  /** Keys the tutorial is asking for. */
+  highlighted: readonly string[];
   /** Briefly flashed on press. */
   pressed: string | null;
   /** SHIFT armed for the next key. */
@@ -161,14 +165,20 @@ export function paintKeypad(canvas: HTMLCanvasElement, view: KeypadView) {
     if (key.group === "app") fill = "#2f6fdc";
     if (pressed) fill = "#ffffff";
     if (key.id === "SHIFT" && view.shift) fill = "#fff2b3";
+    const asked = view.highlighted.includes(key.id);
+    if (asked) {
+      ctx.fillStyle = "rgba(255, 176, 32, 0.35)";
+      roundRect(ctx, key.x - 3, key.y - 3, key.w + 6, key.h + 6, 4.5);
+      ctx.fill();
+    }
     ctx.fillStyle = fill;
     if (key.arrow) arrowKey(ctx, key.x, key.y, key.w, key.h);
     else roundRect(ctx, key.x, key.y, key.w, key.h, 2.2);
     ctx.fill();
 
-    if (view.hovered === key.id) {
+    if (asked || view.hovered === key.id) {
       ctx.strokeStyle = "#ffb020";
-      ctx.lineWidth = 1.4;
+      ctx.lineWidth = asked ? 2.4 : 1.4;
       roundRect(ctx, key.x - 0.8, key.y - 0.8, key.w + 1.6, key.h + 1.6, 3);
       ctx.stroke();
     }

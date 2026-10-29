@@ -19,6 +19,9 @@ export const PANEL = {
   /** --foreground / --muted-foreground */
   text: "#fafafa",
   textMuted: "#a1a1aa",
+  /** --primary / --primary-foreground: the one action that moves on. */
+  primary: "#e4e4e7",
+  primaryText: "#18181b",
 } as const;
 
 /** The tone scale from src/shared/ui/tone.ts, at *-400. */

@@ -6,6 +6,9 @@ import * as THREE from "three";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { useRigRegistry } from "@/widgets/vr-scene/rig-registry";
+import { useSessionStore } from "@/features/session/session-store";
+import { useTutorialKeys } from "@/features/tutorial/tutorial-store";
+import { pulseFrom } from "@/features/xr/haptics";
 import { screenView } from "@/widgets/vr-scene/machine-rig";
 import { drawPendantScreen, screenKey } from "@/widgets/vr-scene/pendant-screen";
 import { CANVAS_H, CANVAS_W, paintKeypad } from "./keypad-painter";
@@ -13,6 +16,7 @@ import { PANEL_H, PANEL_W, PHYSICAL, SCREEN, SIDE_CONTROLS, keyAt } from "./ngc-
 
 const MM = 0.001;
 const noopRaycast = () => {};
+const NO_KEYS: string[] = [];
 
 /** Panel millimetres (from the top-left) to the panel group's local metres. */
 const at = (x: number, y: number, z = 0): [number, number, number] => [
@@ -82,6 +86,9 @@ function PushButton({
  */
 export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }: Props) {
   const rig = useRigRegistry((s) => s.rig);
+  const tutorialKeys = useTutorialKeys();
+  const inTutorial = useSessionStore((s) => s.gameMode) === "tutorial";
+  const highlighted = inTutorial ? tutorialKeys : NO_KEYS;
   const [hovered, setHovered] = useState<string | null>(null);
   const [shift, setShift] = useState(false);
   const pressed = useRef<{ id: string; at: number } | null>(null);
@@ -126,9 +133,9 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
 
     const flash =
       pressed.current && performance.now() / 1000 - pressed.current.at < 0.15 ? pressed.current.id : null;
-    const keypadKey = `${hovered}|${flash}|${shift}`;
+    const keypadKey = `${hovered}|${flash}|${shift}|${highlighted.join(",")}`;
     if (keypadKey !== painted.current.keypad) {
-      paintKeypad(keypad.canvas, { hovered, pressed: flash, shift });
+      paintKeypad(keypad.canvas, { hovered, highlighted, pressed: flash, shift });
       keypad.texture.needsUpdate = true;
       painted.current.keypad = keypadKey;
     }
@@ -163,6 +170,7 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
           e.stopPropagation();
           const key = pointerKey(e);
           if (!key) return;
+          pulseFrom(e, "tap");
           pressed.current = { id: key.id, at: performance.now() / 1000 };
           if (key.id === "CLOSE_PANEL") return onClose();
           // SHIFT arms the next key's second legend, then disarms.

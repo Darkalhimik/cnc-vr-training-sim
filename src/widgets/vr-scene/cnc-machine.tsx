@@ -12,6 +12,7 @@ const MachineModel = dynamic(
 );
 
 type CncMachineProps = {
+  interactive: boolean;
   highlightedParts: MachinePartId[];
   hoveredPart: MachinePartId | null;
   onPartInteract: (partId: MachinePartId, sign?: 1 | -1) => void;

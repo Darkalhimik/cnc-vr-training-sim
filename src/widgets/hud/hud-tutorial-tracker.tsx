@@ -4,9 +4,14 @@ import { Button } from "@/shared/ui/button";
 import {
   useCurrentPhase,
   useCurrentStep,
+  useTutorialSteps,
   useTutorialStore,
 } from "@/features/tutorial/tutorial-store";
-import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
+import { instructionOf } from "@/features/cnc-tutorial/tutorial-types";
+import { useMachineStore } from "@/entities/machine/machine-store";
+import { useLevelSession } from "@/features/levels/level-session";
+import { TUTORIALS } from "@/features/levels/tutorials";
+import { LevelComplete } from "@/features/levels/ui/level-complete";
 import { useSessionStore } from "@/features/session/session-store";
 import { cn } from "@/shared/lib/cn";
 import { TONE_CLASSES, TONE_TEXT, toneOf } from "@/shared/ui/tone";
@@ -19,12 +24,13 @@ function stepState(index: number, stepIndex: number) {
 }
 
 function ProgressRail({ stepIndex }: { stepIndex: number }) {
+  const steps = useTutorialSteps();
   return (
     <ol
       className="grid gap-0.5"
-      style={{ gridTemplateColumns: `repeat(${cncTutorialSteps.length}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
     >
-      {cncTutorialSteps.map((step, i) => {
+      {steps.map((step, i) => {
         const state = stepState(i, stepIndex);
         return (
           <li key={step.id} className="flex min-w-0 flex-col items-center gap-1">
@@ -62,11 +68,14 @@ export function HudTutorialTracker() {
   const stepIndex = useTutorialStore((s) => s.stepIndex);
   const phaseIndex = useTutorialStore((s) => s.phaseIndex);
   const status = useTutorialStore((s) => s.status);
-  const celebrationDismissed = useTutorialStore((s) => s.celebrationDismissed);
-  const reset = useTutorialStore((s) => s.reset);
-  const dismiss = useTutorialStore((s) => s.dismissCelebration);
   const deviceMode = useSessionStore((s) => s.deviceMode);
   const focusCamera = useSessionStore((s) => s.focusCamera);
+  const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
+  const level = useLevelSession((s) => s.level);
+  const restart = useLevelSession((s) => s.restart);
+  // Live instructions ("Z is at -42.000") re-read the machine as it moves.
+  const machine = useMachineStore((s) => s.machine);
 
   const currentStep = useCurrentStep();
   const currentPhase = useCurrentPhase();
@@ -75,22 +84,7 @@ export function HudTutorialTracker() {
     return (
       <div className="space-y-3">
         <ProgressRail stepIndex={stepIndex} />
-        <div className="space-y-1">
-          <h4 className="text-sm font-semibold tracking-tight">Machine ready</h4>
-          <p className="text-xs/relaxed text-muted-foreground">
-            Startup complete: homed, jogged and warmed up. The HAAS UMC-500 is ready to run a job.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="md" variant="secondary" onClick={reset}>
-            Restart tutorial
-          </Button>
-          {!celebrationDismissed && (
-            <Button size="md" onClick={dismiss}>
-              Continue
-            </Button>
-          )}
-        </div>
+        <LevelComplete outro={level ? TUTORIALS[level.id]?.outro : undefined} />
       </div>
     );
   }
@@ -98,6 +92,7 @@ export function HudTutorialTracker() {
   if (!currentStep || !currentPhase) return null;
 
   const totalPhases = currentStep.phases.length;
+  const keys = currentPhase.keys ?? [];
 
   return (
     <div className="space-y-3">
@@ -112,7 +107,17 @@ export function HudTutorialTracker() {
             </span>
           )}
         </h4>
-        <p className="text-xs/relaxed text-muted-foreground">{currentPhase.instruction}</p>
+        <p className="text-xs/relaxed text-muted-foreground">{instructionOf(currentPhase, machine)}</p>
+        {keys.length > 0 && (
+          <p className="flex flex-wrap items-center gap-1 pt-1">
+            {keys.map((k) => (
+              <kbd key={k} className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                {k.replace(/_/g, " ")}
+              </kbd>
+            ))}
+            <span className="text-[11px] text-muted-foreground">on the full panel</span>
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -121,8 +126,13 @@ export function HudTutorialTracker() {
             Show me
           </Button>
         )}
-        <Button size="md" variant="secondary" onClick={reset}>
-          Reset
+        {keys.length > 0 && !fullPanelOpen && (
+          <Button size="md" onClick={() => setFullPanelOpen(true)}>
+            Open full panel
+          </Button>
+        )}
+        <Button size="md" variant="secondary" onClick={restart}>
+          Restart
         </Button>
       </div>
     </div>

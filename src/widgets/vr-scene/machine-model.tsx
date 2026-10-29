@@ -4,11 +4,11 @@ import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import { createPortal, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useMachineStore } from "@/entities/machine/machine-store";
+import { DRACO_DECODER } from "@/shared/lib/draco";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { CoolantStream } from "./coolant-voxels";
 import { GuideArrows } from "./arrows";
 import { useRigRegistry } from "./rig-registry";
-import { SpindleTool } from "./workpiece";
 import { MachineRuntime } from "./machine-runtime";
 import {
   MODEL_URL,
@@ -21,6 +21,8 @@ import {
 } from "./machine-rig";
 
 type Props = {
+  /** Off: pointer events pass through to whatever holds the machine. */
+  interactive: boolean;
   highlightedParts: MachinePartId[];
   hoveredPart: MachinePartId | null;
   onPartInteract: (partId: MachinePartId, sign?: 1 | -1) => void;
@@ -34,8 +36,8 @@ type Props = {
  * Machine state is read every frame rather than subscribed to, so axis moves,
  * the door and the gauge animate without re-rendering React.
  */
-export function MachineModel({ highlightedParts, hoveredPart, onPartInteract, onHoverPart }: Props) {
-  const { scene } = useGLTF(MODEL_URL);
+export function MachineModel({ interactive, highlightedParts, hoveredPart, onPartInteract, onHoverPart }: Props) {
+  const { scene } = useGLTF(MODEL_URL, DRACO_DECODER);
   // useGLTF caches the scene, so bind it once for the life of the page — a
   // second bind would clone every material again.
   const rig: MachineRig = useMemo(
@@ -80,16 +82,15 @@ export function MachineModel({ highlightedParts, hoveredPart, onPartInteract, on
     <>
       <primitive
         object={scene}
-        onClick={handleClick}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
+        onClick={interactive ? handleClick : undefined}
+        onPointerOver={interactive ? handlePointerOver : undefined}
+        onPointerOut={interactive ? handlePointerOut : undefined}
       />
       <GuideArrows anchors={rig.anchors} highlightedParts={highlightedParts} />
       {createPortal(<CoolantStream rig={rig} />, rig.nodes.coolantNozzle)}
-      {createPortal(<SpindleTool />, rig.nodes.spindle)}
       {createPortal(<MachineRuntime rig={rig} />, rig.nodes.stockMount)}
     </>
   );
 }
 
-useGLTF.preload(MODEL_URL);
+useGLTF.preload(MODEL_URL, DRACO_DECODER);

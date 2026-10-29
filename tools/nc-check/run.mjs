@@ -489,19 +489,38 @@ check("G04 dwell P1.5 = 1.5 s, P1500 = 1.5 s; cycle time sums", () => {
   return `cycle ${r.cycleSeconds.toFixed(2)} s`;
 });
 
-check("Tool change: Z home, toolChange event, toolsUsed", () => {
+check("Tool change: Z home, then X/Y to the SMTC arm; pockets swap; toolsUsed", () => {
   const r = run([...HEADER, "G01 Z0. F100.", "T2 M06", "S2000 M03", "G43 H02 Z10.", "G01 Z0.", "M30"]);
   clean(r);
   const i = r.motions.findIndex((m) => m.kind === "toolChange");
-  ok(i > 0 && r.motions[i].tool === 2, "toolChange T2");
-  close(r.motions[i - 1].to.z, 0, 1e-9, "Z at machine zero before the change");
+  const c = r.motions[i];
+  ok(i > 1 && c.tool === 2 && c.from === 1, "toolChange T1 -> T2");
+  // Z first, then X/Y at Z0 (Setting 247 OFF), both rapids.
+  const [zUp, xy] = [r.motions[i - 2], r.motions[i - 1]];
+  ok(zUp.kind === "rapid" && xy.kind === "rapid", "rapids before the change");
+  close(zUp.to.z, 0, 1e-9, "Z at machine zero first");
+  point(zUp.to, { ...zUp.from, z: 0 }, 1e-9, "Z alone");
+  point(xy.to, { x: -610, y: -82, z: 0 }, 1e-9, "tool-change X/Y");
+  // Default pockets: T N in pocket N; the spindle tool's pocket is at the arm.
+  ok(c.pocket === 2 && c.index === 1, `pocket ${c.pocket}, index ${c.index}`);
+  close(c.seconds, c.indexSeconds + 2.8, 1e-9, "index + 2.8 s swap");
   ok(JSON.stringify(r.toolsUsed) === "[1,2]", `toolsUsed ${r.toolsUsed}`);
   close(moves(r).at(-1).to.z, -350 + 0 + 120, 1e-9, "H02 length");
+  // Random pockets: T1 went into pocket 2, so T1 comes back out of it.
+  const back = run(["T2 M06", "T3 M06", "T1 M06", "M30"]);
+  clean(back);
+  const seq = back.motions.filter((m) => m.kind === "toolChange").map((m) => `${m.from}>${m.tool}@${m.pocket}${m.index >= 0 ? "+" : ""}${m.index}`);
+  ok(JSON.stringify(seq) === '["1>2@2+1","2>3@3+1","3>1@2-1"]', `sequence ${seq}`);
+  const given = run(["T3 M06", "M30"], { pockets: [0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3], carouselPocket: 2 });
+  const g = given.motions.find((m) => m.kind === "toolChange");
+  ok(g.pocket === 30 && g.index === -2, `T3 from pocket 30 the short way: ${g.pocket} ${g.index}`);
   const bad = run([...HEADER, "T9 M06", "M30"]);
   ok(alarms(bad)[0]?.message.startsWith("TOOL NOT IN TOOL TABLE"), "T9 not in table");
+  const unloaded = run(["T3 M06", "M30"], { pockets: new Array(30).fill(0) });
+  ok(alarms(unloaded)[0]?.message.includes("not in a carousel pocket"), "T3 in no pocket");
   const noT = run(["M06", "M30"], { toolInSpindle: 0 });
   ok(alarms(noT)[0]?.message.startsWith("M06 WITHOUT T CODE"), "M06 without T");
-  return `T1 -> T2, change at Z0, ${r.motions[i].seconds} s`;
+  return `T1 -> T2: Z0, X-610 Y-82, ${c.seconds.toFixed(2)} s`;
 });
 
 check("Program errors: invalid G (310), two M-codes (339), arc R too small (302)", () => {

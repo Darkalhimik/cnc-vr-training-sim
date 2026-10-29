@@ -3,6 +3,9 @@ import { isMachinePartId, type MachinePartId } from "@/entities/machine/machine-
 import { BOOT_MS, spindleRpm } from "@/entities/machine/machine-logic";
 import { getActiveRun } from "@/entities/machine/machine-store";
 import { CAD_POSE } from "@/entities/machine/kinematics";
+import { activeToolChange } from "@/entities/machine/program-run";
+import { POCKETS, changerPose } from "@/entities/machine/tool-changer";
+import { activeTools, activeToolsVersion } from "@/entities/part/tool-library";
 import {
   AXES,
   type Axis,
@@ -10,6 +13,7 @@ import {
   airPressure,
 } from "@/entities/machine/machine-types";
 import { drawPendantScreen, screenKey, type ScreenView } from "./pendant-screen";
+import { createToolObject, disposeToolObject } from "./tool-body";
 
 /**
  * Binds public/models/umc500.glb to machine state.
@@ -29,6 +33,13 @@ const BUTTON_TRAVEL_M = 0.003;
 const ESTOP_TRAVEL_M = 0.008;
 const PRESS_S = 0.18;
 const HANDWHEEL_DETENT = (2 * Math.PI) / 10;
+/** Spindle nose (the gauge line) below the Spindle node's origin. */
+const NOSE_Y = -0.131;
+/** How far the changer's arm drops to pull both tools out of their tapers. */
+const ARM_DROP_M = 0.12;
+const POCKET_STEP_DEG = 360 / POCKETS;
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const TILT = new THREE.Quaternion();
 
 /** Parts that dip when pressed. */
 const PUSH_PARTS = new Set<MachinePartId>([
@@ -69,7 +80,13 @@ const NODE_NAMES = {
   jawNeg: "Vise_JawNeg",
   jawPos: "Vise_JawPos",
   modelTool: "Tool",
+  carousel: "ToolChanger_Carousel",
+  arm: "ToolChanger_Arm",
+  gripA: "ArmGrip_A",
+  gripB: "ArmGrip_B",
 } as const;
+
+const pocketName = (kind: "Pocket" | "PocketTool", pocket: number) => `${kind}_${String(pocket).padStart(2, "0")}`;
 
 /** Half the jaw opening the model was built with (an 80 mm stock). */
 const JAW_REST_HALF_MM = 40;
@@ -90,6 +107,21 @@ export type MachineRig = {
   rest: Map<THREE.Object3D, THREE.Vector3>;
   screen: { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture; key: string; drawnAt: number };
   beacon: THREE.MeshStandardMaterial;
+  /** The side-mount changer: pocket tilt pivots and tool mounts, pocket 1
+   *  first; the spindle's gauge line; one object per tool loaded, moved
+   *  between them, rebuilt when another set is loaded. */
+  changer: {
+    pockets: THREE.Object3D[];
+    /** Each pocket's turn on the wheel, untilted. */
+    pocketRest: THREE.Quaternion[];
+    mounts: THREE.Object3D[];
+    spindle: THREE.Object3D;
+    tools: Map<number, THREE.Object3D>;
+    /** activeToolsVersion() the tools were built for. */
+    toolsVersion: number;
+    /** Pocket index drawn tilted, or −1. */
+    tilted: number;
+  };
   /** Animated values: where things are drawn, easing towards machine state. */
   anim: {
     now: number;
@@ -108,6 +140,12 @@ export type MachineRig = {
     bootStartedAt: number | null;
     pressedAt: Map<MachinePartId, number>;
     jawHalf: number;
+    /** Carousel turn, degrees; arm turn, degrees; arm drop and station
+     *  pocket tilt, 0–1. */
+    carousel: number;
+    arm: number;
+    armDown: number;
+    pocketDown: number;
   };
 };
 
@@ -172,9 +210,25 @@ export function bindRig(scene: THREE.Object3D, initial: MachineState): MachineRi
   screenMesh.material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
   glows.delete("screen"); // it paints its own light
 
-  // The tool in the spindle is drawn from the tool table (SpindleTool), so
-  // the one modelled in the GLB only stands in for the CAD.
+  // Tools are drawn from the tool library and travel between the spindle,
+  // the changer's arm and its pockets, so the one modelled in the GLB only
+  // stands in for the CAD.
   nodes.modelTool.visible = false;
+  const spindleGauge = new THREE.Object3D();
+  spindleGauge.name = "Spindle_Gauge";
+  spindleGauge.position.y = NOSE_Y;
+  nodes.spindle.add(spindleGauge);
+  const pocketNumbers = Array.from({ length: POCKETS }, (_, i) => i + 1);
+  const changer = {
+    pockets: pocketNumbers.map((p) => find(scene, pocketName("Pocket", p))),
+    pocketRest: [] as THREE.Quaternion[],
+    mounts: pocketNumbers.map((p) => find(scene, pocketName("PocketTool", p))),
+    spindle: spindleGauge,
+    tools: new Map<number, THREE.Object3D>(activeTools().map((t) => [t.number, createToolObject(t)])),
+    toolsVersion: activeToolsVersion(),
+    tilted: -1,
+  };
+  changer.pocketRest = changer.pockets.map((p) => p.quaternion.clone());
 
   const beaconMesh = nodes.beacon as THREE.Mesh;
   const beacon = (beaconMesh.material as THREE.MeshStandardMaterial).clone();
@@ -188,6 +242,7 @@ export function bindRig(scene: THREE.Object3D, initial: MachineState): MachineRi
     rest,
     screen: { canvas, texture, key: "", drawnAt: -1 },
     beacon,
+    changer,
     anim: {
       now: 0,
       position: { ...initial.position },
@@ -205,9 +260,19 @@ export function bindRig(scene: THREE.Object3D, initial: MachineState): MachineRi
       bootStartedAt: null,
       pressedAt: new Map(),
       jawHalf: initial.stock ? initial.stock.size[0] / 2 : JAW_OPEN_HALF_MM,
+      carousel: carouselAngle(initial.carouselPocket),
+      arm: 0,
+      armDown: 0,
+      pocketDown: 0,
     },
   };
 }
+
+/** Carousel turn that brings `pocket` down to the arm. */
+const carouselAngle = (pocket: number) => -(pocket - 1) * POCKET_STEP_DEG;
+
+/** `angle` plus whole turns, as close to `near` as possible. */
+const unwrap = (angle: number, near: number) => angle + 360 * Math.round((near - angle) / 360);
 
 /** Which way a click on the handwheel turns it: right half plus, left minus. */
 export function handwheelSign(rig: MachineRig, worldPoint: THREE.Vector3): 1 | -1 {
@@ -295,11 +360,16 @@ export function animateRig(
   nodes.axisC.rotation.set(0, THREE.MathUtils.degToRad(p.c - CAD_POSE.c), 0);
 
   // Spindle: real speed would strobe, so the drawn speed only suggests it.
+  // For a tool change it orients, so the drive keys meet the holder's slots.
+  const change = activeToolChange(run);
   const rpm = spindleRpm(m);
   anim.rpm = ease(anim.rpm, rpm, 1.5, dt);
   const visualRps = anim.rpm > 5 ? 1.5 + 6 * Math.sqrt(anim.rpm / 8100) : (anim.rpm / 5) * 1.5;
-  anim.spindleAngle = (anim.spindleAngle + visualRps * 2 * Math.PI * dt) % (2 * Math.PI);
+  anim.spindleAngle = change
+    ? ease(anim.spindleAngle, anim.spindleAngle > Math.PI ? 2 * Math.PI : 0, 10, dt)
+    : (anim.spindleAngle + visualRps * 2 * Math.PI * dt) % (2 * Math.PI);
   nodes.spindle.rotation.set(0, anim.spindleAngle, 0);
+  animateChanger(rig, m, change, dt);
 
   // Vise jaws close onto the width of the stock along X.
   anim.jawHalf = ease(anim.jawHalf, m.stock ? m.stock.size[0] / 2 : JAW_OPEN_HALF_MM, 6, dt);
@@ -381,6 +451,70 @@ export function animateRig(
     rig.screen.texture.needsUpdate = true;
     rig.screen.key = key;
     rig.screen.drawnAt = now;
+  }
+}
+
+/**
+ * The side-mount changer, and where each tool is. Mid-change the pose comes
+ * from the run's position in the toolChange motion (tool-changer.ts), so feed
+ * hold freezes it; between changes the carousel rests with the machine's
+ * station pocket at the arm. A change cut short by RESET settles back.
+ */
+function animateChanger(rig: MachineRig, m: MachineState, active: ReturnType<typeof activeToolChange>, dt: number) {
+  const { nodes, anim, changer, rest } = rig;
+  const pose = active ? changerPose(active.change, active.elapsed) : null;
+  let station = m.carouselPocket;
+  if (active && pose) {
+    const { change } = active;
+    const from = change.pocket - change.index;
+    anim.carousel = unwrap(carouselAngle(from) - pose.indexed * POCKET_STEP_DEG, anim.carousel);
+    anim.arm = pose.arm;
+    anim.armDown = pose.armDown;
+    anim.pocketDown = pose.pocketDown;
+    station = change.pocket;
+  } else {
+    anim.carousel = ease(anim.carousel, unwrap(carouselAngle(station), anim.carousel), 4, dt);
+    // The arm is the same either way round, so any half turn is home.
+    anim.arm = ease(anim.arm, 180 * Math.round(anim.arm / 180), 4, dt);
+    anim.armDown = ease(anim.armDown, 0, 4, dt);
+    anim.pocketDown = ease(anim.pocketDown, 0, 4, dt);
+  }
+  nodes.carousel.rotation.set(THREE.MathUtils.degToRad(anim.carousel), 0, 0);
+  nodes.arm.rotation.set(0, THREE.MathUtils.degToRad(anim.arm), 0);
+  nodes.arm.position.y = rest.get(nodes.arm)!.y - ARM_DROP_M * anim.armDown;
+  // Only the pocket at the arm tilts, on top of the turn that places it on
+  // the wheel; down is a quarter turn about its Blender Y, three's −Z.
+  const tilt = station - 1;
+  const untilt = (i: number) => changer.pockets[i].quaternion.copy(changer.pocketRest[i]);
+  if (changer.tilted >= 0 && changer.tilted !== tilt) untilt(changer.tilted);
+  untilt(tilt).multiply(TILT.setFromAxisAngle(Z_AXIS, (Math.PI / 2) * anim.pocketDown));
+  changer.tilted = tilt;
+
+  // Another set loaded (free play's own loadout, or back to the standard set
+  // for a level): the old tools come out of the changer, the new go in.
+  if (changer.toolsVersion !== activeToolsVersion()) {
+    for (const object of changer.tools.values()) disposeToolObject(object);
+    changer.tools = new Map(activeTools().map((t) => [t.number, createToolObject(t)]));
+    changer.toolsVersion = activeToolsVersion();
+  }
+
+  const where = (tool: number): THREE.Object3D | null => {
+    if (active && pose) {
+      const { change } = active;
+      const pocket = changer.mounts[change.pocket - 1];
+      const place = tool === change.from ? pose.outgoing : tool === change.tool ? pose.incoming : null;
+      if (place === "arm") return tool === change.from ? nodes.gripA : nodes.gripB;
+      if (place === "pocket") return pocket;
+      if (place === "spindle") return changer.spindle;
+    }
+    if (tool === m.toolInSpindle) return changer.spindle;
+    const pocket = m.pockets.indexOf(tool);
+    return pocket >= 0 ? changer.mounts[pocket] : null;
+  };
+  for (const [number, object] of changer.tools) {
+    const mount = where(number);
+    object.visible = mount !== null;
+    if (mount && object.parent !== mount) mount.add(object);
   }
 }
 

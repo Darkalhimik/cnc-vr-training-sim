@@ -1,0 +1,44 @@
+# Self-hosting: `docker compose up -d --build` runs Postgres and the app.
+# Development: `docker compose up -d db` runs only Postgres, for `npm run dev`.
+#
+# Set BETTER_AUTH_SECRET (and PUBLIC_URL if the box has a name) in a .env
+# file next to this one. WebXR needs HTTPS: put the app behind a TLS proxy
+# (Caddy, Traefik, a Cloudflare tunnel) for VR and AR; desktop works on HTTP.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cnc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cnc}
+      POSTGRES_DB: cnc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cnc -d cnc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://cnc:${POSTGRES_PASSWORD:-cnc}@db:5432/cnc
+      DB_POOL_MAX: "10"
+      # Required: Better Auth refuses to start in production without it.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_URL: ${PUBLIC_URL:-}
+      AUTH_ALLOWED_HOSTS: ${AUTH_ALLOWED_HOSTS:-}
+      MIGRATE_ON_START: "1"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  pgdata:

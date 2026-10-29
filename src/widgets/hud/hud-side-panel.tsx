@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
@@ -13,26 +13,24 @@ import {
 } from "@/features/session/session-store";
 import { FreePlayOverlay } from "@/features/free-play/ui/freeplay-overlay";
 import { PartDevelopmentPanel } from "@/features/part-development/ui/part-development-panel";
+import { useLevelSession } from "@/features/levels/level-session";
+import { TaskPanel } from "@/features/levels/ui/task-panel";
 import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
-import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
-
-const gameModeOptions: { value: GameMode; label: string }[] = [
-  { value: "tutorial", label: "Tutorial" },
-  { value: "freeplay", label: "Free play" },
-  { value: "develop", label: "Part dev" },
-];
+import type { MachineInfo } from "@/entities/catalog/machines";
+import { DEVICE_LABEL, isImmersive as immersive, type DeviceMode, type GameMode } from "@/entities/machine/machine-types";
 
 const GAME_MODE_TITLE: Record<GameMode, string> = {
-  tutorial: "Tutorial",
   freeplay: "Free play",
-  develop: "Part development",
+  tutorial: "Tutorial",
+  task: "Task",
 };
 
 const deviceModeOptions: { value: DeviceMode; label: string }[] = [
   { value: "desktop", label: "Desktop" },
   { value: "vr", label: "VR" },
-  { value: "ar", label: "AR" },
+  { value: "glasses", label: "Glasses" },
+  { value: "phone", label: "Phone" },
 ];
 
 /** One titled block of the panel. The panel owns the surface, so a section is
@@ -62,11 +60,17 @@ function Section({
 }
 
 interface HudSidePanelProps {
+  machine: MachineInfo;
   deviceMode: DeviceMode;
   gameMode: GameMode;
   xrError: string | null;
   xrSessionInfo: string | null;
   onEnterImmersive: () => void;
+  /** Where the header's back link goes: the level map, or — in the
+   *  workshop — back to walking. */
+  back: { label: string; href?: string; onClick?: () => void };
+  /** The machine can be sized and turned — not where it stands in a bay. */
+  adjustable: boolean;
   className?: string;
 }
 
@@ -79,21 +83,27 @@ interface HudSidePanelProps {
  * internally, so the machine never has to be read through a panel.
  */
 export function HudSidePanel({
+  machine,
   deviceMode,
   gameMode,
   xrError,
   xrSessionInfo,
   onEnterImmersive,
+  back,
+  adjustable,
   className,
 }: HudSidePanelProps) {
   const router = useRouter();
+  const search = useSearchParams();
+  const level = useLevelSession((s) => s.level);
+  const levelError = useLevelSession((s) => s.error);
   const machineScale = useSessionStore((s) => s.machineScale);
   const setMachineScale = useSessionStore((s) => s.setMachineScale);
   const turnMachine = useSessionStore((s) => s.turnMachine);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
 
-  const isImmersive = deviceMode === "vr" || deviceMode === "ar";
+  const isImmersive = immersive(deviceMode);
 
   return (
     <aside
@@ -103,66 +113,85 @@ export function HudSidePanel({
       )}
     >
       <header className="flex items-center justify-between gap-2 p-3">
-        <Link
-          href="/"
-          className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          ← Menu
-        </Link>
+        {back.href ? (
+          <Link
+            href={back.href}
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            ← {back.label}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={back.onClick}
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            ← {back.label}
+          </button>
+        )}
         <ThemeToggle />
       </header>
 
-      <Section title="Session">
-        <div className="grid gap-2">
-          <SegmentedControl
-            options={gameModeOptions}
-            value={gameMode}
-            onChange={(mode) => router.push(`/play/${deviceMode}/${mode}`)}
-            fill
-          />
-          <SegmentedControl
-            options={deviceModeOptions}
-            value={deviceMode}
-            onChange={(device) => router.push(`/play/${device}/${gameMode}`)}
-            fill
-          />
+      <section className="space-y-2 border-t p-3">
+        <div className="space-y-0.5">
+          <p className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+            {machine.name} · {GAME_MODE_TITLE[gameMode]}
+          </p>
+          <h2 className="text-sm font-semibold tracking-tight">{level?.title ?? "The whole machine"}</h2>
         </div>
+        <SegmentedControl
+          options={deviceModeOptions}
+          value={deviceMode}
+          onChange={(device) => router.push(`/world/${device}${search.size ? `?${search}` : ""}`)}
+          fill
+        />
+      </section>
+
+      <Section title={gameMode === "freeplay" ? "Job" : GAME_MODE_TITLE[gameMode]}>
+        {levelError && !level && <p className="text-xs text-amber-700 dark:text-amber-300">{levelError}</p>}
+        {gameMode === "tutorial" && <HudTutorialTracker />}
+        {gameMode === "task" && <TaskPanel />}
+        {gameMode === "freeplay" && <PartDevelopmentPanel />}
       </Section>
 
       <Section title="Machine status">
         <HudMachineStatus />
       </Section>
 
-      <Section title={GAME_MODE_TITLE[gameMode]}>
-        {gameMode === "tutorial" && <HudTutorialTracker />}
-        {gameMode === "freeplay" && <FreePlayOverlay />}
-        {gameMode === "develop" && <PartDevelopmentPanel />}
-      </Section>
+      {gameMode === "freeplay" && (
+        <Section title="Explore">
+          <FreePlayOverlay />
+        </Section>
+      )}
 
-      <Section title="View" trailing={`${machineScale.toFixed(2)}×`}>
-        <label className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">Size</span>
-          <input
-            type="range"
-            min={MACHINE_SCALE_MIN}
-            max={MACHINE_SCALE_MAX}
-            step={0.05}
-            value={machineScale}
-            onChange={(e) => setMachineScale(parseFloat(e.target.value))}
-            className="min-w-0 flex-1 accent-[var(--primary)]"
-          />
-        </label>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">Turn</span>
-          <div className="ml-auto flex gap-2">
-            <Button size="md" variant="secondary" onClick={() => turnMachine(-1)}>
-              Left 90°
-            </Button>
-            <Button size="md" variant="secondary" onClick={() => turnMachine(1)}>
-              Right 90°
-            </Button>
-          </div>
-        </div>
+      <Section title="View" trailing={adjustable ? `${machineScale.toFixed(2)}×` : undefined}>
+        {adjustable && (
+          <>
+            <label className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">Size</span>
+              <input
+                type="range"
+                min={MACHINE_SCALE_MIN}
+                max={MACHINE_SCALE_MAX}
+                step={0.05}
+                value={machineScale}
+                onChange={(e) => setMachineScale(parseFloat(e.target.value))}
+                className="min-w-0 flex-1 accent-[var(--primary)]"
+              />
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">Turn</span>
+              <div className="ml-auto flex gap-2">
+                <Button size="md" variant="secondary" onClick={() => turnMachine(-1)}>
+                  Left 90°
+                </Button>
+                <Button size="md" variant="secondary" onClick={() => turnMachine(1)}>
+                  Right 90°
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Pendant</span>
           <Button
@@ -180,7 +209,7 @@ export function HudSidePanel({
         <Section title="Immersive">
           <div className="space-y-2">
             <Button size="lg" onClick={onEnterImmersive} className="w-full">
-              {deviceMode === "vr" ? "Enter VR" : "Enter AR"}
+              {deviceMode === "vr" ? "Enter VR" : `Start ${DEVICE_LABEL[deviceMode]}`}
             </Button>
 
             {xrError ? (

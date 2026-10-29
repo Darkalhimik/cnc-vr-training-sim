@@ -24,6 +24,10 @@ export interface StockRemoval {
   readonly voxel: number;
   /** Binary STL of the current stock surface. */
   exportStl(): Promise<Blob>;
+  /** A copy of the distance field and the material it holds, for saving. */
+  exportField(): Promise<{ info: GridInfo; data: Int8Array<ArrayBuffer>; volumeMm3: number }>;
+  /** Show a saved field instead of a fresh blank; it can be cut further. */
+  load(field: { info: GridInfo; data: Int8Array<ArrayBuffer> }): Promise<void>;
   dispose(): void;
 }
 
@@ -178,6 +182,18 @@ export function createStockRemoval(material?: THREE.Material, options: StockRemo
       const reply = await send({ id: nextId++, type: "stl" });
       if (reply.type !== "stl") throw new Error(`Unexpected reply to exportStl: ${reply.type}`);
       return new Blob([reply.stl], { type: "model/stl" });
+    },
+
+    async exportField() {
+      const reply = await send({ id: nextId++, type: "field" });
+      if (reply.type !== "field") throw new Error(`Unexpected reply to exportField: ${reply.type}`);
+      return { info: reply.info, data: reply.data, volumeMm3: reply.volumeMm3 };
+    },
+
+    async load(field) {
+      // A copy is transferred, so the caller keeps its field.
+      const data = field.data.slice();
+      await send({ id: nextId++, type: "load", info: field.info, data }, [data.buffer]);
     },
 
     dispose() {

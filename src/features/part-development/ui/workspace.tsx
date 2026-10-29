@@ -15,9 +15,19 @@ import {
 } from "@/entities/part/part-design";
 import { MATERIALS, type StockMaterial } from "@/entities/part/tool-library";
 import { useMachineStore } from "@/entities/machine/machine-store";
+import type { Diagnostic } from "@/entities/nc";
 import { showToast } from "@/shared/ui/toast";
+import {
+  CHECK_TARGETS,
+  CheckSummary,
+  CodeEditor,
+  ProblemList,
+  useProgramAnalysis,
+  useProgramEditor,
+  type CodeEditorHandle,
+} from "@/widgets/gcode-editor";
+import { useSessionStore } from "@/features/session/session-store";
 import { useJobStore, type WorkspaceTab } from "../job-store";
-import { checkProgram, type CheckAgainst, type ProgramCheck } from "../program-check";
 
 const KIND_LABEL: Record<FeatureKind, string> = {
   face: "Facing",
@@ -283,39 +293,30 @@ function DesignTab() {
   );
 }
 
-const checkTargets: { value: CheckAgainst; label: string }[] = [
-  { value: "ideal", label: "Ideal setup" },
-  { value: "machine", label: "Machine setup" },
-];
-
-const minutes = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
-
 function ProgramTab() {
   const program = useJobStore((s) => s.program);
   const design = useJobStore((s) => s.design);
   const setProgram = useJobStore((s) => s.setProgram);
   const programEdited = useJobStore((s) => s.programEdited);
   const loadProgram = useMachineStore((s) => s.loadProgram);
+  const against = useProgramEditor((s) => s.against);
+  const setAgainst = useProgramEditor((s) => s.setAgainst);
+  const openFullScreen = useProgramEditor((s) => s.open);
+  const { analysis, stale, runNow } = useProgramAnalysis(program, design, against);
+  const editor = useRef<CodeEditorHandle>(null);
   const lines = program.split("\n").length;
-  const [scroll, setScroll] = useState(0);
-  const [against, setAgainst] = useState<CheckAgainst>("ideal");
-  const [check, setCheck] = useState<(ProgramCheck & { text: string; against: CheckAgainst }) | null>(null);
-  const editor = useRef<HTMLTextAreaElement>(null);
-  const stale = check !== null && (check.text !== program || check.against !== against);
-  const diagnostics = check ? [...check.crashes, ...check.result.diagnostics].sort((a, b) => a.line - b.line) : [];
-  const alarms = diagnostics.filter((d) => d.severity === "alarm").length;
-  const runCheck = () =>
-    setCheck({ text: program, against, ...checkProgram(program, design, against, useMachineStore.getState().machine) });
   const name = `O${String(design.programNumber).padStart(5, "0")}`;
 
-  /** Put the caret on a line and scroll it into view. */
-  const goTo = (line: number) => {
-    const el = editor.current;
-    if (!el) return;
-    const at = program.split("\n").slice(0, line - 1).join("\n").length + (line > 1 ? 1 : 0);
-    el.focus();
-    el.setSelectionRange(at, at + (program.split("\n")[line - 1]?.length ?? 0));
-    el.scrollTop = Math.max(0, (line - 4) * 18);
+  const check = () => {
+    const a = runNow();
+    showToast(
+      `${a.alarms} alarm${a.alarms === 1 ? "" : "s"}, ${a.warnings} warning${a.warnings === 1 ? "" : "s"}.`,
+      a.alarms > 0 ? "warning" : "success",
+    );
+  };
+  // A subprogram's line is in another text; the full-screen editor opens those.
+  const goTo = (d: Diagnostic) => {
+    if (!d.program) editor.current?.goToLine(d.line);
   };
 
   return (
@@ -323,9 +324,14 @@ function ProgramTab() {
       <div className="flex items-center gap-2">
         <Badge qualifier>{programEdited ? "edited" : "from design"}</Badge>
         <span className="font-mono text-xs text-muted-foreground">{lines} lines</span>
+        <Button size="sm" variant="secondary" className="ml-auto" onClick={openFullScreen}>
+          Full screen
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <SegmentedControl options={CHECK_TARGETS} value={against} onChange={setAgainst} />
         <div className="ml-auto flex gap-2">
-          <SegmentedControl options={checkTargets} value={against} onChange={setAgainst} />
-          <Button size="sm" variant="secondary" onClick={runCheck}>
+          <Button size="sm" variant="secondary" onClick={check}>
             Check
           </Button>
           <Button
@@ -339,64 +345,32 @@ function ProgramTab() {
           </Button>
         </div>
       </div>
-      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-md border">
-        {/* Line numbers, scrolled with the text. */}
-        <div
-          aria-hidden
-          className="w-10 shrink-0 select-none overflow-hidden border-r bg-muted/50 py-2 pr-2 text-right font-mono text-[11px] leading-[18px] text-muted-foreground"
-        >
-          <div style={{ transform: `translateY(${-scroll}px)` }}>
-            {Array.from({ length: lines }, (_, i) => (
-              <div key={i}>{i + 1}</div>
-            ))}
-          </div>
+      <CodeEditor
+        ref={editor}
+        value={program}
+        onChange={setProgram}
+        analysis={analysis}
+        fontSize={11.5}
+        className="flex-1 rounded-md border"
+      />
+      <section className={cn("max-h-48 space-y-1 overflow-y-auto rounded-md border p-2", stale && "opacity-60")}>
+        <div className="flex flex-wrap items-center gap-2">
+          {analysis && (
+            <>
+              <Badge tone={analysis.alarms > 0 ? "rose" : "emerald"}>{analysis.alarms} alarms</Badge>
+              <Badge tone={analysis.warnings > 0 ? "amber" : "zinc"}>{analysis.warnings} warnings</Badge>
+            </>
+          )}
+          <CheckSummary analysis={analysis} stale={stale} />
         </div>
-        <textarea
-          ref={editor}
-          value={program}
-          spellCheck={false}
-          onScroll={(e) => setScroll(e.currentTarget.scrollTop)}
-          onChange={(e) => setProgram(e.target.value)}
-          className="min-w-0 flex-1 resize-none bg-transparent px-2 py-2 font-mono text-[11px] leading-[18px] outline-none"
-        />
-      </div>
-      {check && (
-        <section className={cn("max-h-48 space-y-1 overflow-y-auto rounded-md border p-2", stale && "opacity-60")}>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge tone={alarms > 0 ? "rose" : "emerald"}>{alarms} alarms</Badge>
-            <Badge tone="amber">{diagnostics.length - alarms} warnings</Badge>
-            <span className="font-mono text-muted-foreground">
-              {minutes(check.result.cycleSeconds)} cycle · {check.result.motions.length} moves · tools{" "}
-              {check.result.toolsUsed.map((t) => `T${t}`).join(" ") || "none"}
-            </span>
-            {stale && <span className="text-muted-foreground">edited since — check again</span>}
-          </div>
-          <ul className="space-y-0.5">
-            {diagnostics.map((d, i) => (
-              <li key={i}>
-                <button
-                  type="button"
-                  onClick={() => goTo(d.line)}
-                  className={cn(
-                    "w-full rounded px-1 text-left font-mono text-[11px] hover:bg-accent",
-                    d.severity === "alarm" ? "text-rose-700 dark:text-rose-300" : "text-amber-700 dark:text-amber-300",
-                  )}
-                >
-                  L{d.line}
-                  {d.program ? ` (${d.program})` : ""} {d.code ? `${d.code} ` : ""}
-                  {d.message}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs/relaxed text-muted-foreground">
-            {check.against === "ideal"
-              ? "Checked against the probed setup: gauge-line tool lengths and G54 at the top-face centre, from home."
-              : "Checked against the machine as it is now: its tool and work offsets, the tool in the spindle and where the axes are."}{" "}
-            CRASH lines are where the real tool would end up, which the control cannot see.
-          </p>
-        </section>
-      )}
+        <ProblemList analysis={analysis} onGoTo={goTo} />
+        <p className="text-xs/relaxed text-muted-foreground">
+          {against === "ideal"
+            ? "Checked as you type against the probed setup: gauge-line tool lengths and G54 at the top-face centre, from home."
+            : "Checked as you type against the machine as it is now: its tool and work offsets, the tool in the spindle and where the axes are."}{" "}
+          CRASH lines are where the real tool would end up, which the control cannot see.
+        </p>
+      </section>
     </div>
   );
 }
@@ -407,16 +381,19 @@ function ProgramTab() {
  * belongs on a desktop; setup and running happen on the machine, in any mode.
  */
 export function PartWorkspace() {
-  const tab = useJobStore((s) => s.tab);
+  const selected = useJobStore((s) => s.tab);
   const setTab = useJobStore((s) => s.setTab);
   const setOpen = useJobStore((s) => s.setWorkspaceOpen);
+  // A task's part is its drawing: the trainee writes the program, not the design.
+  const isTask = useSessionStore((s) => s.gameMode) === "task";
+  const tab = isTask ? "program" : selected;
 
   return (
     <aside className="pointer-events-auto flex h-full w-[30rem] max-w-[calc(100vw-22rem)] flex-col border-r bg-background/95 backdrop-blur">
       <header className="flex items-center gap-2 border-b p-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide">Part development</h3>
-        <SegmentedControl options={tabs} value={tab} onChange={setTab} className="ml-auto" />
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide">{isTask ? "Program" : "Workspace"}</h3>
+        {!isTask && <SegmentedControl options={tabs} value={tab} onChange={setTab} className="ml-auto" />}
+        <Button size="sm" variant="ghost" className={isTask ? "ml-auto" : undefined} onClick={() => setOpen(false)}>
           Close
         </Button>
       </header>

@@ -48,8 +48,8 @@ import {
   MAX_TOOL_NUMBER,
   MM_PER_INCH,
   RAPID_RATE,
-  TOOL_CHANGE_SECONDS,
 } from "./machine-data";
+import { POCKETS, TOOL_CHANGE_XY, afterSwap, loadedPockets, planChange } from "../machine/tool-changer";
 import { parseProgram } from "./parser";
 import type {
   ActiveCodes,
@@ -252,6 +252,9 @@ class Run {
   private tsc = false;
   private tool: number;
   private nextTool: number | undefined;
+  /** The SMTC as the program leaves it: tool per pocket, pocket at the arm. */
+  private pockets: number[];
+  private station: number;
   private h = 0;
   private d = 0;
   private tapDir: "cw" | "ccw" = "cw";
@@ -271,6 +274,8 @@ class Run {
     this.units = options.metricDefault === false ? "G20" : "G21";
     for (const [n, v] of Object.entries(options.variables ?? {})) this.globals.set(Number(n), v);
     this.tool = setup.toolInSpindle;
+    this.pockets = [...(setup.pockets ?? loadedPockets(Object.keys(setup.tools).map(Number), this.tool))];
+    this.station = setup.carouselPocket ?? (this.tool >= 1 && this.tool <= POCKETS ? this.tool : 1);
     if (this.followTool && this.setup.tools[this.tool]) {
       this.lengthComp = "G43";
       this.h = this.tool;
@@ -762,10 +767,13 @@ class Run {
   }
 
   /**
-   * M06 (mcode.md §5.3): stop spindle and coolant, Z to machine zero (X and Y
-   * stay; Setting 247 OFF), orient, swap. The spindle and coolant are not
-   * restarted — the program commands S/M03 and M08 again. Requesting the tool
-   * already in the spindle does nothing. M06 ignores G234/G254.
+   * M06 (mcode.md §5.3, smtc.md): stop spindle and coolant, Z to machine zero,
+   * then X/Y to where the side-mount changer's arm reaches the spindle
+   * (Setting 247 OFF), orient, swap. The carousel indexes the requested tool's
+   * pocket to the arm first, and the old tool goes into that same pocket. The
+   * spindle and coolant are not restarted — the program commands S/M03 and M08
+   * again. Requesting the tool already in the spindle does nothing. M06
+   * ignores G234/G254.
    */
   private toolChange(tWord?: W) {
     if (this.cycle !== "G80") this.fail("toolChangeInCycle", "cancel the canned cycle (G80) before M06");
@@ -774,10 +782,17 @@ class Run {
     if (!this.setup.tools[t]) this.fail("toolNotInTable", `T${t} is not in the tool table`);
     this.comp.flush();
     if (t === this.tool) return;
+    const plan = planChange(this.pockets, this.station, t);
+    if (!plan.pocket) this.fail("toolNotInTable", `T${t} is not in a carousel pocket`);
     this.runSpindle("stop");
     this.setCoolant(false, false);
     if (Math.abs(this.pos.z) > 1e-9) this.machineMove({ ...this.pos, z: 0 }, true);
-    this.event({ kind: "toolChange", tool: t, seconds: TOOL_CHANGE_SECONDS });
+    const at = { ...this.pos, ...TOOL_CHANGE_XY };
+    if (Math.abs(at.x - this.pos.x) > 1e-9 || Math.abs(at.y - this.pos.y) > 1e-9) this.machineMove(at, true);
+    const { pocket, index, indexSeconds, seconds } = plan;
+    this.event({ kind: "toolChange", tool: t, from: this.tool, pocket, index, indexSeconds, seconds });
+    this.pockets = afterSwap(this.pockets, pocket, this.tool);
+    this.station = pocket;
     this.tool = t;
     if (!this.toolsUsed.includes(t)) this.toolsUsed.push(t);
     if (this.followTool && this.lengthComp !== "G234") {

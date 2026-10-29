@@ -5,6 +5,8 @@ import { useSessionStore } from "./session-store";
 import { useJobStore } from "@/features/part-development/job-store";
 import { showToast } from "@/shared/ui/toast";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
+import { partInHand } from "@/features/xr/grab";
+import { pulse } from "@/features/xr/haptics";
 
 /**
  * Operating a part, from any input — mouse, touch or an XR controller ray.
@@ -20,9 +22,10 @@ export function useInteraction() {
       session.setFullPanelOpen(!session.fullPanelOpen);
       return;
     }
-    // In part development the vise takes and gives back the job stock.
+    // The vise takes and gives back the job's blank — free play's design, or
+    // the level's.
     const machine = useMachineStore.getState();
-    if (partId === "vise" && useSessionStore.getState().gameMode === "develop") {
+    if (partId === "vise") {
       const { stock } = useJobStore.getState().design;
       const outcome = machine.setStock(
         machine.machine.stock ? null : { size: [stock.x, stock.y, stock.z], material: stock.material },
@@ -30,7 +33,14 @@ export function useInteraction() {
       if (outcome.rejected) showToast(outcome.rejected, "warning");
       return;
     }
+    if (partId === "cycle_start" && partInHand.current) {
+      pulse("tap");
+      showToast("The part is in your hand: put it back in the vise or on a shelf first.", "warning");
+      return;
+    }
     const { rejected, notice } = machine.operate(partId, sign);
+    // The controller that pressed feels it; the handwheel clicks through its detents.
+    pulse(partId === "handwheel" && !rejected ? "detent" : "tap");
     const message = rejected ?? notice;
     if (message) showToast(message, "warning");
   };

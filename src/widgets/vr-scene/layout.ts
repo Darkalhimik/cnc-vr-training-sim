@@ -10,7 +10,8 @@ export function getSceneGroupPosition(mode: DeviceMode): [number, number, number
   switch (mode) {
     case "vr":
       return [-0.25, 0, -2.6];
-    case "ar":
+    case "glasses":
+    case "phone":
       return [-0.25, 0, -2.8];
     default:
       return [0, 0, 0];
@@ -31,7 +32,8 @@ export function getPreviewCamera(mode: DeviceMode): {
   switch (mode) {
     case "vr":
       return { position: [1.4, 1.9, 2.2], target: [-0.1, 1.2, -1.6], fov: 60 };
-    case "ar":
+    case "glasses":
+    case "phone":
       return { position: [1.4, 1.9, 2.0], target: [-0.1, 1.2, -1.8], fov: 60 };
     default:
       // Orbit pivot between the door and the pendant, at chest height.

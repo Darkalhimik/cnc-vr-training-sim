@@ -1,15 +1,24 @@
 /**
- * The tools loaded in the UMC-500's carousel for part development: what the
- * CAM picks from, what the offset table starts with, and what the material
- * removal engine sweeps through the stock.
+ * The tools in the machine: what the CAM picks from, what the offset table
+ * starts with, what the removal engine sweeps through the stock and what the
+ * rig hangs in the changer.
+ *
+ * They come from the shop's crib (entities/tooling): the standard set while a
+ * level runs, the machine's own loadout in free play. `activeTools()` is
+ * whichever is loaded now; `TOOL_LIBRARY` is always the standard set.
  *
  * Lengths are gauge line to tip, the value TOOL OFFSET MEASURE would record
  * for H. Diameters are the D register (Haas Setting 40 = diameter).
  */
-export type CutterKind = "flat" | "ball" | "drill" | "spot" | "face";
+import { assemblyById, type CutterKind } from "@/entities/tooling/catalog";
+import { STANDARD_LOADOUT, type Loadout } from "@/entities/tooling/loadout";
+
+export type { CutterKind };
 
 export type LibraryTool = {
   number: number;
+  /** The crib's tool this is (entities/tooling/catalog.ts). */
+  assembly: string;
   name: string;
   kind: CutterKind;
   diameter: number;
@@ -24,18 +33,49 @@ export type LibraryTool = {
   tipAngle?: number;
 };
 
-export const TOOL_LIBRARY: LibraryTool[] = [
-  { number: 1, name: "50 mm face mill", kind: "face", diameter: 50, fluteLength: 6, length: 72, stickout: 30, holderDiameter: 50 },
-  { number: 2, name: "10 mm flat end mill", kind: "flat", diameter: 10, fluteLength: 22, length: 95, stickout: 38, holderDiameter: 32 },
-  { number: 3, name: "6 mm flat end mill", kind: "flat", diameter: 6, fluteLength: 16, length: 88, stickout: 30, holderDiameter: 28 },
-  { number: 4, name: "10 mm spot drill 90°", kind: "spot", diameter: 10, fluteLength: 8, length: 82, stickout: 28, holderDiameter: 28, tipAngle: 90 },
-  { number: 5, name: "5.0 mm drill", kind: "drill", diameter: 5, fluteLength: 52, length: 110, stickout: 60, holderDiameter: 24, tipAngle: 118 },
-  { number: 6, name: "6.8 mm drill (M8 tap)", kind: "drill", diameter: 6.8, fluteLength: 63, length: 118, stickout: 68, holderDiameter: 24, tipAngle: 118 },
-  { number: 7, name: "8.5 mm drill (M10 tap)", kind: "drill", diameter: 8.5, fluteLength: 75, length: 126, stickout: 78, holderDiameter: 26, tipAngle: 118 },
-  { number: 8, name: "6 mm ball end mill", kind: "ball", diameter: 6, fluteLength: 14, length: 90, stickout: 32, holderDiameter: 28 },
-];
+/** A loadout as the tools in the machine, tool number order. Slots naming a
+ *  tool the crib does not have are left out. */
+export function loadoutTools(loadout: Loadout): LibraryTool[] {
+  const tools: LibraryTool[] = [];
+  for (const slot of [...loadout].sort((a, b) => a.number - b.number)) {
+    const a = assemblyById(slot.assembly);
+    if (!a) continue;
+    tools.push({
+      number: slot.number,
+      assembly: a.id,
+      name: a.name,
+      kind: a.cutterSpec.kind,
+      diameter: a.cutterSpec.diameter,
+      fluteLength: a.cutterSpec.fluteLength,
+      length: a.length,
+      stickout: a.stickout,
+      holderDiameter: a.holderSpec.noseDiameter,
+      ...(a.cutterSpec.tipAngle ? { tipAngle: a.cutterSpec.tipAngle } : {}),
+    });
+  }
+  return tools;
+}
 
-export const toolByNumber = (n: number) => TOOL_LIBRARY.find((t) => t.number === n) ?? null;
+/** The shop's standard set, T1–T8: what every level runs with. */
+export const TOOL_LIBRARY: LibraryTool[] = loadoutTools(STANDARD_LOADOUT);
+
+let active = TOOL_LIBRARY;
+let activeVersion = 0;
+
+/** The tools loaded in the machine now. */
+export const activeTools = () => active;
+/** Changes whenever another set is loaded: the rig rebuilds its tools on it. */
+export const activeToolsVersion = () => activeVersion;
+
+export function setActiveTools(tools: LibraryTool[]) {
+  const same =
+    tools.length === active.length && tools.every((t, i) => t.number === active[i].number && t.assembly === active[i].assembly);
+  if (same) return;
+  active = tools;
+  activeVersion++;
+}
+
+export const toolByNumber = (n: number) => active.find((t) => t.number === n) ?? null;
 
 export type StockMaterial = "aluminium" | "steel" | "pom";
 

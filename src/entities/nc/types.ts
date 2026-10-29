@@ -24,6 +24,10 @@ export type NcSetup = {
   tools: Record<number, ToolEntry>;
   /** 0 = empty. */
   toolInSpindle: number;
+  /** SMTC pocket table, pocket 1 first (0 = empty), and the pocket at the
+   *  arm. Default: tool N in pocket N, the spindle tool's pocket at the arm. */
+  pockets?: number[];
+  carouselPocket?: number;
   /** Where the machine is when the program starts. */
   start: MachinePosition;
   /** Other programs in memory, for M98 P/G65 calls: O-number (e.g. "O01000") -> text */
@@ -71,7 +75,19 @@ export type Motion =
       tcp?: boolean;
     })
   | (MotionSource & { kind: "dwell"; seconds: number })
-  | (MotionSource & { kind: "toolChange"; tool: number; seconds: number })
+  /** M06 through the side-mount changer: the carousel turns `index` pockets
+   *  (signed, in `indexSeconds`) to bring `pocket` to the arm, then the arm
+   *  swaps `from` (the spindle tool, 0 = none) with `tool`, which leaves
+   *  `from` in `pocket`. `seconds` covers both. */
+  | (MotionSource & {
+      kind: "toolChange";
+      tool: number;
+      from: number;
+      pocket: number;
+      index: number;
+      indexSeconds: number;
+      seconds: number;
+    })
   | (MotionSource & { kind: "spindle"; rpm: number; dir: "cw" | "ccw" | "stop" })
   | (MotionSource & { kind: "coolant"; on: boolean })
   | (MotionSource & { kind: "stop"; optional: boolean })

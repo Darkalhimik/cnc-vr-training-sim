@@ -27,9 +27,9 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HAAS UMC-500 | CNC VR Training Simulator",
+  title: "CNC Trainer",
   description:
-    "Interactive 3D training simulator for the HAAS UMC-500 5-axis Universal Machining Center. Desktop, VR, and AR modes.",
+    "Train on CNC machines in 3D, VR and AR: guided tutorials, machining tasks that are measured, free play, and a warehouse for the parts you make.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

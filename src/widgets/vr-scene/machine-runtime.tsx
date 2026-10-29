@@ -7,43 +7,18 @@ import { getActiveRun, useMachineStore } from "@/entities/machine/machine-store"
 import { stepRun } from "@/entities/machine/program-run";
 import { toolInStock } from "@/entities/machine/kinematics";
 import { AXES, spindleRpm, type AxisValues } from "@/entities/machine/machine-types";
-import { MATERIALS, toolByNumber, type LibraryTool } from "@/entities/part/tool-library";
-import { createStockRemoval, type CutterShape, type StockRemoval, type ToolPose } from "@/features/part-development/removal";
+import { MATERIALS, toolByNumber } from "@/entities/part/tool-library";
+import { cutterOf, segment } from "@/features/part-development/cutter";
+import { createStockRemoval, type StockRemoval, type ToolPose } from "@/features/part-development/removal";
 import { useSessionStore } from "@/features/session/session-store";
 import { useStockRegistry } from "@/features/part-development/stock-registry";
+import { pulse, pulseCut } from "@/features/xr/haptics";
 import type { MachineRig } from "./machine-rig";
 
 /** How often a running program's position is written back to the store. */
 const PROGRESS_S = 0.1;
 /** Material a non-cutting move may graze before it counts as a crash, mm³. */
 const GRAZE_MM3 = 0.5;
-
-/** The carousel tool as the removal engine sees it. */
-function cutterOf(tool: LibraryTool): CutterShape {
-  const kind = tool.kind === "spot" ? "chamfer" : tool.kind === "face" ? "flat" : tool.kind;
-  return {
-    kind,
-    diameter: tool.diameter,
-    tipAngle: tool.tipAngle,
-    fluteLength: tool.fluteLength,
-    stickout: tool.stickout,
-    holderDiameter: tool.holderDiameter,
-  };
-}
-
-/** Points every ≤ 0.5 mm / 1° from `from` to `to`, excluding `from`. */
-function segment(from: AxisValues, to: AxisValues): AxisValues[] {
-  const lin = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
-  const rot = Math.max(Math.abs(to.b - from.b), Math.abs(to.c - from.c));
-  const n = Math.ceil(Math.max(lin / 0.5, rot));
-  const out: AxisValues[] = [];
-  for (let k = 1; k <= n; k++) {
-    const p = {} as AxisValues;
-    for (const a of AXES) p[a] = from[a] + ((to[a] - from[a]) * k) / n;
-    out.push(p);
-  }
-  return out;
-}
 
 /**
  * The stock in the vise as a cuttable solid, and the loop that runs the
@@ -108,12 +83,18 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
       .then((report) => {
         const now = useMachineStore.getState();
         if (now.machine.alarms.some((a) => a.code === "crash")) return;
+        // In a headset the controllers feel the cut, and the crash.
+        pulseCut(report.removedMm3);
+        const crashed = (text: string) => {
+          now.crash(text);
+          pulse("crash", "both");
+        };
         if (report.collision) {
-          now.crash(report.collision.kind === "holder" ? "TOOL HOLDER HIT THE PART" : "TOOL SHANK HIT THE PART");
+          crashed(report.collision.kind === "holder" ? "TOOL HOLDER HIT THE PART" : "TOOL SHANK HIT THE PART");
         } else if (rapid && report.removedMm3 > GRAZE_MM3) {
-          now.crash("RAPID MOVE INTO MATERIAL");
+          crashed("RAPID MOVE INTO MATERIAL");
         } else if (!turning && report.removedMm3 > GRAZE_MM3) {
-          now.crash("TOOL HIT THE PART WITH THE SPINDLE STOPPED");
+          crashed("TOOL HIT THE PART WITH THE SPINDLE STOPPED");
         }
       })
       // A cut still in flight when the stock is swapped or disposed is dropped.

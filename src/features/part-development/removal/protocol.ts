@@ -14,14 +14,20 @@ export type Request =
   | { id: number; type: "reset"; size: [number, number, number]; voxel?: number }
   /** Poses packed POSE_STRIDE floats each, transferred. */
   | { id: number; type: "cut"; tool: CutterShape; poses: Float64Array<ArrayBuffer> }
-  | { id: number; type: "stl" };
+  | { id: number; type: "stl" }
+  /** A copy of the distance field, for the warehouse. */
+  | { id: number; type: "field" }
+  /** Replace the stock with a saved field (transferred) and mesh it. */
+  | { id: number; type: "load"; info: GridInfo; data: Int8Array<ArrayBuffer> };
 
 export type Reply =
-  /** Every tile with surface; the main thread replaces all it has. */
+  /** Every tile with surface; the main thread replaces all it has. Also the
+   *  reply to "load". */
   | { id: number; type: "reset"; info: GridInfo; tiles: TileMesh[] }
   /** Only the tiles the cut changed; empty ones mean "drop it". */
   | { id: number; type: "cut"; report: CutReport; tiles: TileMesh[] }
   | { id: number; type: "stl"; stl: ArrayBuffer }
+  | { id: number; type: "field"; info: GridInfo; data: Int8Array<ArrayBuffer>; volumeMm3: number }
   | { id: number; type: "error"; message: string };
 
 export const tileBuffers = (tiles: TileMesh[]): ArrayBuffer[] =>

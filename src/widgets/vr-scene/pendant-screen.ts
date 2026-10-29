@@ -301,7 +301,7 @@ function commandsPage(ctx: Ctx, v: ScreenView, x: number, y: number, w: number, 
     ["SPINDLE", `${spindle} S${c.spindleSpeed}`],
     ["COOLANT", c.coolant ? "M08" : "M09"],
     ["FEED", `F${c.feed}`],
-    ["PROGRAM", `${m.runSource === "mdi" ? "MDI" : m.activeProgram}  L${m.programLine}`],
+    ["PROGRAM", `${m.runSource === "mdi" ? "MDI" : m.runSource === "atc" ? "ATC" : m.activeProgram}  L${m.programLine}`],
     ["MODE", MODE_STATUS[m.mode]],
   ];
   const step = Math.min(row * 0.72, (h - row * 1.6) / groups.length);

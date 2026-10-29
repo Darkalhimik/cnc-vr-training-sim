@@ -35,7 +35,12 @@ type MachineStore = {
   loadProgram: (name: string, text: string, select?: boolean) => Outcome;
   /** Write offsets directly — the "probe it for me" shortcuts of setup. */
   setOffsets: (patch: Pick<Partial<MachineState>, "workOffsets" | "tools">) => void;
+  /** Another set of tools in the changer: tool table, pocket table, the
+   *  spindle's tool and the pocket at the arm (features/tooling). */
+  setMagazine: (patch: Pick<MachineState, "tools" | "pockets" | "toolInSpindle" | "carouselPocket">) => void;
   reset: () => void;
+  /** Put the machine in a given state: where a level starts. */
+  load: (state: MachineState) => void;
   /** Skip the startup: the machine as the tutorial leaves it. */
   makeReady: () => void;
 };
@@ -102,10 +107,16 @@ export const useMachineStore = create<MachineStore>((set, get) => {
       return { next };
     },
     setOffsets: (patch) => set({ machine: { ...get().machine, ...patch } }),
+    setMagazine: (patch) => set({ machine: { ...get().machine, ...patch }, message: "Tools loaded. Measure the new ones before cutting." }),
     reset: () => {
       clearTimers();
       activeRun = null;
       set({ machine: initialMachineState, message: null });
+    },
+    load: (state) => {
+      clearTimers();
+      activeRun = null;
+      set({ machine: state, message: null });
     },
     makeReady: () => {
       clearTimers();

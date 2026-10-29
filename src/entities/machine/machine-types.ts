@@ -1,9 +1,26 @@
 import type { ActiveCodes } from "@/entities/nc/types";
 import type { StockMaterial } from "@/entities/part/tool-library";
 import { TOOL_LIBRARY } from "@/entities/part/tool-library";
+import { loadedPockets } from "./tool-changer";
 
-export type DeviceMode = "desktop" | "vr" | "ar";
-export type GameMode = "tutorial" | "freeplay" | "develop";
+/**
+ * How the trainee is looking: a desktop browser, a VR headset (the whole
+ * workshop, walked), AR glasses (a passthrough headset: the machine in their
+ * own room, with hands) or a phone (the machine placed in camera view).
+ */
+export type DeviceMode = "desktop" | "vr" | "glasses" | "phone";
+export const DEVICE_MODES: readonly DeviceMode[] = ["desktop", "vr", "glasses", "phone"];
+export const DEVICE_LABEL: Record<DeviceMode, string> = {
+  desktop: "Desktop",
+  vr: "VR headset",
+  glasses: "AR glasses",
+  phone: "Phone AR",
+};
+/** Headsets and phones: the DOM is not visible, the scene carries everything. */
+export const isImmersive = (d: DeviceMode) => d !== "desktop";
+/** Passthrough: the trainee's own room is the backdrop, so no virtual one. */
+export const isPassthrough = (d: DeviceMode) => d === "glasses" || d === "phone";
+export type GameMode = "freeplay" | "tutorial" | "task";
 
 /** Machine axes: three linear (mm) on the head, tilt and rotary (deg) on the
  *  trunnion. Haas calls the UMC-500's trunnion axes B and C. */
@@ -116,8 +133,9 @@ export type MachineState = {
   /** The MDI program, kept until ERASE PROGRAM. */
   mdi: string;
   program: ProgramState;
-  /** What CYCLE START ran: the active program or the MDI program. */
-  runSource: "memory" | "mdi" | null;
+  /** What CYCLE START ran: the active program or the MDI program; "atc" is a
+   *  tool change from the keypad (ATC FWD/REV, NEXT TOOL). */
+  runSource: "memory" | "mdi" | "atc" | null;
   /** Line of the block executing, in the program being run. */
   programLine: number;
   warmupDone: boolean;
@@ -136,6 +154,13 @@ export type MachineState = {
   tools: Record<number, ToolOffset>;
   /** Tool number in the spindle; 0 when empty. */
   toolInSpindle: number;
+  /** The side-mount changer's pocket table, pocket 1 first; 0 is empty. Tools
+   *  come back to the pocket the new tool left, so it drifts from T = pocket. */
+  pockets: number[];
+  /** The carousel pocket at the arm. */
+  carouselPocket: number;
+  /** The tool a keypad tool change ("atc" run) is fetching. */
+  atcTool: number;
   /** Raw stock clamped in the vise, millimetres X × Y × Z. */
   stock: StockOnMachine | null;
 };
@@ -238,6 +263,9 @@ export const initialMachineState: MachineState = {
   activeWorkOffset: "G54",
   tools: unmeasuredTools,
   toolInSpindle: 2,
+  pockets: loadedPockets(TOOL_LIBRARY.map((t) => t.number), 2),
+  carouselPocket: 2,
+  atcTool: 0,
   stock: null,
 };
 

@@ -3,7 +3,7 @@
  * and re-meshes what a cut changed before replying, so a resolved cut()
  * always comes with its geometry. Mesh buffers are transferred, never copied.
  */
-import { createGrid, gridInfo } from "./grid";
+import { createGrid, gridInfo, materialVolume } from "./grid";
 import { tileBuffers, type Reply, type Request } from "./protocol";
 import { writeStl } from "./stl";
 import { createSurface, refreshSurface, type Surface } from "./surface";
@@ -37,6 +37,31 @@ function handle(request: Request) {
       const report = cutPath(surface.grid, compileTool(request.tool), request.poses);
       const tiles = refreshSurface(surface);
       scope.postMessage({ id: request.id, type: "cut", report, tiles }, tileBuffers(tiles));
+      return;
+    }
+    case "load": {
+      const { chunks } = request.info;
+      const grid = {
+        ...request.info,
+        data: request.data,
+        dirty: new Uint8Array(chunks[0] * chunks[1] * chunks[2]),
+      };
+      const fresh = createSurface(grid);
+      surface = fresh.surface;
+      scope.postMessage(
+        { id: request.id, type: "reset", info: gridInfo(grid), tiles: fresh.tiles },
+        tileBuffers(fresh.tiles),
+      );
+      return;
+    }
+    case "field": {
+      if (!surface) throw new Error("No stock: call reset() before field().");
+      const { grid } = surface;
+      const data = grid.data.slice();
+      scope.postMessage(
+        { id: request.id, type: "field", info: gridInfo(grid), data, volumeMm3: materialVolume(grid) },
+        [data.buffer],
+      );
       return;
     }
     case "stl": {
