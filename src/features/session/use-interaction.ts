@@ -1,25 +1,19 @@
 "use client";
 
 import { useMachineStore } from "@/entities/machine/machine-store";
-import { useTutorialStore } from "@/features/tutorial/tutorial-store";
 import { showToast } from "@/shared/ui/toast";
-import { useSessionStore } from "./session-store";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 
+/**
+ * Operating a part, from any input — mouse, touch or an XR controller ray.
+ * The tutorial is not told here: it follows machine state on its own (see
+ * useTutorialSync), because half of what it waits for is the control
+ * finishing something rather than a click.
+ */
 export function useInteraction() {
-  const gameMode = useSessionStore((s) => s.gameMode);
-
-  return (partId: MachinePartId) => {
-    const event = useMachineStore.getState().interactWithPart(partId);
-
-    if (event.kind === "rejected") {
-      showToast(event.reason, "warning");
-      return;
-    }
-
-    if (gameMode === "tutorial" && event.kind !== "noop") {
-      const violation = useTutorialStore.getState().consumeEvent(event);
-      if (violation) showToast(violation, "warning");
-    }
+  return (partId: MachinePartId, sign?: 1 | -1) => {
+    const { rejected, notice } = useMachineStore.getState().operate(partId, sign);
+    const message = rejected ?? notice;
+    if (message) showToast(message, "warning");
   };
 }

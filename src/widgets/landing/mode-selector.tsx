@@ -11,7 +11,7 @@ const gameModes: { value: GameMode; title: string; desc: string }[] = [
   {
     value: "tutorial",
     title: "Tutorial",
-    desc: "Guided startup flow, five steps, with the next part highlighted.",
+    desc: "Guided Haas startup, nine steps from air supply to spindle warm-up, with the next control highlighted.",
   },
   {
     value: "freeplay",

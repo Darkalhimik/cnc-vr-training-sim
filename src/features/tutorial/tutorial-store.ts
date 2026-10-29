@@ -1,107 +1,92 @@
 "use client";
 
+import { useEffect } from "react";
 import { create } from "zustand";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
-import type { InteractionEvent } from "@/entities/machine/interaction-events";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import type { MachineState } from "@/entities/machine/machine-types";
-import type { TutorialStep } from "@/features/cnc-tutorial/tutorial-types";
-
-type TutorialStatus = "active" | "complete";
+import { advanceTutorial, type TutorialCursor } from "@/features/cnc-tutorial/tutorial-engine";
+import { showToast } from "@/shared/lib/notifications";
 
 type TutorialStore = {
   stepIndex: number;
   phaseIndex: number;
-  status: TutorialStatus;
+  status: TutorialCursor["status"];
+  reached: number;
   celebrationDismissed: boolean;
   startedAt: number;
 
-  /** Returns the violation message when a completed step was undone. */
-  consumeEvent: (event: InteractionEvent) => string | null;
+  /**
+   * Bring the tutorial in line with the machine. Returns the violation message
+   * when a completed step was undone.
+   */
+  sync: (machine: MachineState) => string | null;
   reset: () => void;
   dismissCelebration: () => void;
 };
-
-/**
- * The first phase whose outcome the machine does not already show. Sending the
- * user back to a step should not ask for something that is already true — with
- * the door left open, the door step resumes at "close the door".
- */
-function entryPhaseIndex(step: TutorialStep, machine: MachineState) {
-  const index = step.phases.findIndex((phase) => !phase.satisfied?.(machine));
-  return index === -1 ? step.phases.length - 1 : index;
-}
 
 export const useTutorialStore = create<TutorialStore>((set, get) => ({
   stepIndex: 0,
   phaseIndex: 0,
   status: "active",
+  reached: 0,
   celebrationDismissed: false,
   startedAt: Date.now(),
 
-  consumeEvent: (event) => {
-    const { stepIndex, phaseIndex, status } = get();
-
-    // 1. Advance, if this is what the current phase was waiting for. Once
-    //    complete there is nothing left to advance, but the safety re-check
-    //    below still runs — that gap is what let a finished sequence be taken
-    //    apart with no consequence.
-    if (status === "active") {
-      const step = cncTutorialSteps[stepIndex];
-      const phase = step?.phases[phaseIndex];
-
-      if (phase?.expects(event)) {
-        const isLastPhase = phaseIndex + 1 >= step.phases.length;
-        if (!isLastPhase) {
-          set({ phaseIndex: phaseIndex + 1 });
-        } else {
-          const nextStepIndex = stepIndex + 1;
-          set({
-            stepIndex: nextStepIndex,
-            phaseIndex: 0,
-            status:
-              nextStepIndex >= cncTutorialSteps.length ? "complete" : "active",
-          });
-        }
-      }
+  sync: (machine) => {
+    const { stepIndex, phaseIndex, status, reached } = get();
+    const { cursor, violation } = advanceTutorial(
+      cncTutorialSteps,
+      { stepIndex, phaseIndex, status, reached },
+      machine,
+    );
+    if (
+      cursor.stepIndex !== stepIndex ||
+      cursor.phaseIndex !== phaseIndex ||
+      cursor.status !== status ||
+      cursor.reached !== reached
+    ) {
+      set({ ...cursor, ...(violation ? { celebrationDismissed: false } : {}) });
     }
-
-    // 2. Re-check every step already completed. Undoing one sends the user
-    //    back to it, earliest first, because a later step's prerequisites are
-    //    the earlier ones.
-    const machine = useMachineStore.getState().machine;
-    const completed = Math.min(get().stepIndex, cncTutorialSteps.length);
-
-    for (let i = 0; i < completed; i++) {
-      const step = cncTutorialSteps[i];
-      if (step.guard.holds(machine)) continue;
-
-      set({
-        stepIndex: i,
-        phaseIndex: entryPhaseIndex(step, machine),
-        status: "active",
-        celebrationDismissed: false,
-      });
-      return step.guard.violation;
-    }
-
-    return null;
+    return violation;
   },
 
   reset: () => {
-    useMachineStore.getState().reset();
+    // Tutorial first: resetting the machine triggers a sync, and run against
+    // the old step it would report every completed step as undone.
     set({
       stepIndex: 0,
       phaseIndex: 0,
       status: "active",
+      reached: 0,
       celebrationDismissed: false,
       startedAt: Date.now(),
     });
+    useMachineStore.getState().reset();
   },
 
   dismissCelebration: () => set({ celebrationDismissed: true }),
 }));
+
+/**
+ * Keeps the tutorial following the machine while mounted. The tutorial reads
+ * machine state, not clicks, so it has to hear timer-driven changes — the boot
+ * finishing, the zero return arriving — as well as the trainee's own actions.
+ */
+export function useTutorialSync(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    const sync = (machine: MachineState) => {
+      const violation = useTutorialStore.getState().sync(machine);
+      if (violation) showToast(violation, "warning");
+    };
+    sync(useMachineStore.getState().machine);
+    return useMachineStore.subscribe((state, prev) => {
+      if (state.machine !== prev.machine) sync(state.machine);
+    });
+  }, [enabled]);
+}
 
 // Derived selectors — keep consumers from reaching into cncTutorialSteps directly.
 // Each selector must return a referentially stable value when the store hasn't
@@ -121,4 +106,3 @@ export const useTutorialHighlights = (): MachinePartId[] =>
     if (s.status === "complete") return EMPTY_HIGHLIGHTS;
     return cncTutorialSteps[s.stepIndex]?.phases[s.phaseIndex]?.highlight ?? EMPTY_HIGHLIGHTS;
   });
-

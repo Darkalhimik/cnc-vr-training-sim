@@ -47,13 +47,24 @@ export const TONE_RING: Record<Tone, string> = {
 
 /** Machine and tutorial states, mapped once. */
 export const TONE_OF: Record<string, Tone> = {
-  // machine indicators
+  // machine indicators (entities/machine/machine-indicators.ts)
   on: "emerald",
   off: "zinc",
+  boot: "amber",
   free: "emerald",
   lock: "rose",
+  clear: "emerald",
+  alarm: "rose",
   shut: "emerald",
   open: "amber",
+  homed: "emerald",
+  homing: "sky",
+  lost: "amber",
+  mem: "zinc",
+  jog: "sky",
+  run: "emerald",
+  hold: "amber",
+  stop: "zinc",
   // tutorial progress
   done: "emerald",
   active: "sky",

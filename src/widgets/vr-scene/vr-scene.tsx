@@ -6,12 +6,11 @@ import { OrbitControls } from "@react-three/drei";
 import { XR, useXR, type createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
-import { useMachineStore } from "@/entities/machine/machine-store";
 import { useInteraction } from "@/features/session/use-interaction";
 import { useSessionStore } from "@/features/session/session-store";
 import { useTutorialHighlights } from "@/features/tutorial/tutorial-store";
 import { CncMachine } from "./cnc-machine";
-import { GuideArrows } from "./arrows";
+import { CameraFocus } from "./camera-focus";
 import { TutorialTracker3D } from "./tutorial-tracker-3d";
 import { StatusBoard3D } from "./status-board-3d";
 import { SizePanel3D } from "./size-panel-3d";
@@ -30,6 +29,16 @@ type VrSceneProps = {
 // or scene.background is set, the canvas paints solid black over the feed —
 // the user sees a "black room" instead of their environment. Force a fully
 // transparent clear and null background regardless of session.
+/** Aims the preview camera once; see getPreviewCamera. */
+function AimCamera({ target }: { target: [number, number, number] }) {
+  const camera = useThree((state) => state.camera);
+  const [x, y, z] = target;
+  useEffect(() => {
+    camera.lookAt(x, y, z);
+  }, [camera, x, y, z]);
+  return null;
+}
+
 function ArPassthrough({
   onSessionInfo,
 }: {
@@ -59,19 +68,22 @@ function ArPassthrough({
   return null;
 }
 
+/** With hints on and nothing under the pointer, free play marks the controls
+ *  a startup touches. */
 const FREEPLAY_HINTS: MachinePartId[] = [
-  "door",
   "air_valve",
-  "power_button",
-  "power_off",
-  "emergency_button",
-  "handle_jog",
-  "diagnostics_panel",
-  "coolant_toggle",
+  "main_switch",
+  "power_on",
+  "estop",
+  "reset",
+  "power_up",
+  "door",
+  "hand_jog",
+  "handwheel",
+  "cycle_start",
 ];
 
 export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps) {
-  const machine = useMachineStore((state) => state.machine);
   const interactWithPart = useInteraction();
   const hoveredPart = useSessionStore((state) => state.hoveredPart);
   const hintsEnabled = useSessionStore((state) => state.hintsEnabled);
@@ -80,7 +92,9 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
   const previewCamera = getPreviewCamera(mode);
   const sceneGroupPosition = getSceneGroupPosition(mode);
   const machineScale = useSessionStore((state) => state.machineScale);
+  const machineYaw = useSessionStore((state) => state.machineYaw);
   const setMachineScale = useSessionStore((state) => state.setMachineScale);
+  const turnMachine = useSessionStore((state) => state.turnMachine);
 
   const highlightedParts = useMemo(() => {
     if (gameMode === "tutorial") {
@@ -106,40 +120,44 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
 
         <XR store={xrStore}>
           <ArPassthrough onSessionInfo={onSessionInfo} />
-          <ambientLight intensity={1.4} />
-          <hemisphereLight intensity={0.8} groundColor="#15202c" />
-          <directionalLight position={[4.5, 6.8, 3.2]} intensity={1.8} />
-          <spotLight
-            position={[-3.2, 5.5, 4.5]}
-            intensity={1.35}
-            angle={0.34}
-            penumbra={0.45}
-          />
+          {mode !== "desktop" && <AimCamera target={previewCamera.target} />}
+          {/* Low ambient and a key from the front right, so the light grey
+              sheet metal keeps its edges instead of washing out to white. */}
+          <ambientLight intensity={0.35} />
+          <hemisphereLight intensity={0.7} groundColor="#15202c" />
+          <directionalLight position={[4, 6, 5]} intensity={1.9} />
+          <directionalLight position={[-5, 3.5, -2]} intensity={0.55} />
+          <directionalLight position={[0, 4, -6]} intensity={0.45} />
 
           <group position={sceneGroupPosition} scale={machineScale}>
-            <CncMachine
-              mode={mode}
-              highlightedParts={highlightedParts}
-              machine={machine}
-              onPartInteract={interactWithPart}
-              onHoverPart={setHoveredPart}
-            />
-            <GuideArrows highlightedParts={highlightedParts} mode={mode} />
+            {/* Only the machine turns: the boards stay where the user is. */}
+            <group rotation={[0, machineYaw, 0]}>
+              <CncMachine
+                highlightedParts={highlightedParts}
+                hoveredPart={hoveredPart}
+                onPartInteract={interactWithPart}
+                onHoverPart={setHoveredPart}
+              />
+            </group>
             {/* In immersive modes the DOM HUD is invisible — mirror the
                 tutorial tracker, status board, and size panel as 3D boards
-                beside the machine. */}
+                either side of the machine's front. */}
             {(mode === "vr" || mode === "ar") && (
               <>
                 {gameMode === "tutorial" && (
-                  <group position={[-1.85, 1.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
+                  <group position={[-2.2, 1.55, 1.5]} rotation={[0, Math.PI / 6, 0]}>
                     <TutorialTracker3D />
                   </group>
                 )}
-                <group position={[1.85, 1.55, 0.6]} rotation={[0, -Math.PI / 6, 0]}>
+                <group position={[2.2, 1.45, 1.5]} rotation={[0, -Math.PI / 6, 0]}>
                   <StatusBoard3D />
                 </group>
-                <group position={[-1.85, 0.55, 0.6]} rotation={[0, Math.PI / 6, 0]}>
-                  <SizePanel3D value={machineScale} onChange={setMachineScale} />
+                <group position={[-2.2, 0.42, 1.5]} rotation={[0, Math.PI / 6, 0]}>
+                  <SizePanel3D
+                    value={machineScale}
+                    onChange={setMachineScale}
+                    onTurn={turnMachine}
+                  />
                 </group>
               </>
             )}
@@ -149,22 +167,28 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
               with the machine stops being a warning. */}
           {(mode === "vr" || mode === "ar") && (
             <group position={sceneGroupPosition}>
-              <group position={[0, 2.45, 0.75]}>
+              <group position={[0, 2.35, 1.7]}>
                 <WarningBoard3D />
               </group>
             </group>
           )}
 
           {mode === "desktop" && (
+            // Close enough to read and press the pendant keys; zooming
+            // follows the cursor so the user can dive straight at them.
             <OrbitControls
+              makeDefault
               enablePan
               enableRotate
               enableZoom
-              minDistance={4.5}
-              maxDistance={10}
-              target={[0.65, 1.1, -0.4]}
+              zoomToCursor
+              minDistance={0.35}
+              maxDistance={9}
+              maxPolarAngle={Math.PI * 0.55}
+              target={previewCamera.target}
             />
           )}
+          {mode === "desktop" && <CameraFocus />}
         </XR>
       </Canvas>
     </div>

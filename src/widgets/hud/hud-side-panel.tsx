@@ -81,6 +81,7 @@ export function HudSidePanel({
   const router = useRouter();
   const machineScale = useSessionStore((s) => s.machineScale);
   const setMachineScale = useSessionStore((s) => s.setMachineScale);
+  const turnMachine = useSessionStore((s) => s.turnMachine);
 
   const isImmersive = deviceMode === "vr" || deviceMode === "ar";
 
@@ -139,6 +140,17 @@ export function HudSidePanel({
             className="min-w-0 flex-1 accent-[var(--primary)]"
           />
         </label>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Turn</span>
+          <div className="ml-auto flex gap-2">
+            <Button size="md" variant="secondary" onClick={() => turnMachine(-1)}>
+              Left 90°
+            </Button>
+            <Button size="md" variant="secondary" onClick={() => turnMachine(1)}>
+              Right 90°
+            </Button>
+          </div>
+        </div>
       </Section>
 
       {isImmersive && (

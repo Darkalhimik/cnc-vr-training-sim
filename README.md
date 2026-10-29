@@ -43,8 +43,9 @@ semantic tokens, dense controls, no hero type and no gradients.
   `src/widgets/vr-scene/panel-theme.ts` for the in-scene VR boards, which resolve
   the same tones to hex because a three.js material cannot read a CSS variable.
   Add a state to those maps, not at the call site.
-- Machine materials in `cnc-machine.tsx` / `procedural-shell.tsx` are the
-  physical machine's own colours and sit outside this palette.
+- Machine materials (set in `tools/blender/build_umc500.py`) and the pendant
+  screen (`pendant-screen.ts`) are the physical machine's own colours and sit
+  outside this palette.
 
 ## Run
 
@@ -62,40 +63,58 @@ App routes:
 
 ## Tutorial steps
 
-1. Check air supply via the rear valve (OPEN).
-2. Press the green power button.
-3. E-stop: pull the button out and rotate clockwise to release.
-4. Door check: if open, close it; if closed, open and close it again.
-5. Handle Jog -> Diagnostics.
+The Haas NGC startup, in the order an operator does it at the start of a shift.
+The machine starts as the last shift left it: air off, mains off, E-stop
+pressed, door open, axes parked away from home.
 
-## Modes
+1. **Air** — open the shut-off valve on the rear panel; the gauge rises to ~6 bar.
+2. **Mains** — turn the main disconnect on the electrical cabinet to I.
+3. **Power** — press POWER ON and wait for the control to boot.
+4. **E-stop** — twist the E-stop to release it.
+5. **Reset** — press RESET to clear 107 EMERGENCY OFF and 102 SERVOS OFF.
+6. **Door** — close the front door.
+7. **Home** — press POWER UP; Z returns first, then X/Y, then B/C.
+8. **Jog** — HANDLE JOG, select X, jog X at least 50 mm minus with the handwheel.
+9. **Warm-up** — MEMORY, CYCLE START, and let the spindle warm-up finish.
 
-- `desktop`: mouse/touch training.
-- `vr`: WebXR VR mode.
-- `ar`: WebXR AR mode for mobile.
-- `tutorial`: focused mode limited to the mission.
+Phases complete on machine state, not clicks, so timer-driven events (the boot
+finishing, the zero return arriving) advance the tutorial too. Every completed
+step keeps a guard: undo one — shut the air off, open the door — and the
+tutorial sends the trainee back to it, then skips back up past every later step
+whose outcome still holds.
 
-## Model integration
+## Machine logic
 
-Current machine supports two modes:
+`src/entities/machine/machine-logic.ts` is the whole machine as a pure
+`reduce(state, action)`: interlocks (door hold, low air, E-stop, mains cut
+under load), alarms, modes, travel limits and the timed processes. A slow
+process asks for a timer; the store feeds it back in as an action, so every
+rule is testable without a clock.
 
-- If `public/models/haas-umc500.glb` exists, the real model is rendered.
-- If it does not exist, the scene falls back to the built-in placeholder.
+## Model
 
-To attach a real Haas UMC500 model:
+`public/models/umc500.glb` is generated — do not edit it by hand. It is built
+from the Haas configurator CAD in `assets/cad/` by a Blender script:
 
-1. Put model file into `public/models/haas-umc500.glb`.
-2. Keep interaction anchors using `MACHINE_PART_POSITIONS` so tutorial highlighting remains stable.
+```bash
+blender -b --factory-startup --python tools/blender/build_umc500.py
+# with preview renders of the result:
+blender -b --factory-startup --python tools/blender/build_umc500.py -- --preview <dir>
+```
 
-### Where to get source model
+The script picks one standard configuration out of the CAD's overlaid options,
+splits the trunnion into fixed base and tilting cradle, re-parents every moving
+part under a pivot on its real axis (X/Y/Z, B, C, spindle, door), replaces the
+CAD pendant's controls with separate pressable ones plus a screen and beacon,
+and adds the rear air regulator and the cabinet main disconnect.
 
-You can use official or community CAD sources, then convert to `.glb`:
-
-1. Haas official resources / vendor CAD portals (if available for your license).
-2. Engineering model libraries such as TraceParts / 3D ContentCentral / GrabCAD.
-3. Exported in-house CAD (SolidWorks/STEP/OBJ) from your team.
+The app binds to the model by data, not coordinates: pointable nodes carry a
+`part` extra (one of `MACHINE_PART_IDS`), arrow targets are `Anchor_<part>`
+empties, and the moving nodes keep the names listed in `RIG_NODES` in the
+script and `NODE_NAMES` in `src/widgets/vr-scene/machine-rig.ts`. A new
+control is added in the script and in `machine-parts.ts`, nowhere else.
 
 ## Notes
 
-- This starter already compiles and passes `npm run build`.
+- `npm run build` and `npm run lint` pass.
 - WebXR support depends on browser/device capabilities and HTTPS.

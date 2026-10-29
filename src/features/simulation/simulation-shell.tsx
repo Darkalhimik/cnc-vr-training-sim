@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import { useSessionStore } from "@/features/session/session-store";
+import { useTutorialSync } from "@/features/tutorial/tutorial-store";
 import { ClientOnly } from "@/shared/ui/client-only";
 import { HudNotification } from "@/widgets/hud/hud-notification";
 import { HudSidePanel } from "@/widgets/hud/hud-side-panel";
@@ -30,6 +31,8 @@ export function SimulationShell({ deviceMode, gameMode }: SimulationShellProps) 
   const xrStore = useMemo(() => createXRStore({ emulate: false }), []);
   const [xrError, setXrError] = useState<string | null>(null);
   const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
+
+  useTutorialSync(gameMode === "tutorial");
 
   useEffect(() => {
     setDeviceMode(deviceMode);

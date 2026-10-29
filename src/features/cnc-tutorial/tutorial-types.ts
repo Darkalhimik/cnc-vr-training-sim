@@ -1,19 +1,18 @@
 import type { MachinePartId } from "@/entities/machine/machine-parts";
-import type { InteractionEvent } from "@/entities/machine/interaction-events";
 import type { MachineState } from "@/entities/machine/machine-types";
 
+/**
+ * One instruction within a step. A phase is complete when the machine shows
+ * its outcome, not when a particular button was pressed: the boot finishing or
+ * the zero return arriving home count the same as a click, and a phase whose
+ * outcome is already true is skipped on the way in — with the door already
+ * shut, "close the door" never appears.
+ */
 export type StepPhase = {
   id: string;
   instruction: string;
   highlight: MachinePartId[];
-  expects: (event: InteractionEvent) => boolean;
-  /**
-   * Whether the machine already shows this phase's outcome. Used only when
-   * (re-)entering a step, to skip past what is already true — after being sent
-   * back for leaving the door open, the step should say "close the door", not
-   * ask you to open the one that is open.
-   */
-  satisfied?: (machine: MachineState) => boolean;
+  done: (machine: MachineState) => boolean;
 };
 
 /**

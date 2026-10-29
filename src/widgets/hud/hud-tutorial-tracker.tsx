@@ -7,6 +7,7 @@ import {
   useTutorialStore,
 } from "@/features/tutorial/tutorial-store";
 import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
+import { useSessionStore } from "@/features/session/session-store";
 import { cn } from "@/shared/lib/cn";
 import { TONE_CLASSES, TONE_TEXT, toneOf } from "@/shared/ui/tone";
 
@@ -19,45 +20,36 @@ function stepState(index: number, stepIndex: number) {
 
 function ProgressRail({ stepIndex }: { stepIndex: number }) {
   return (
-    <div className="flex items-start">
+    <ol
+      className="grid gap-0.5"
+      style={{ gridTemplateColumns: `repeat(${cncTutorialSteps.length}, minmax(0, 1fr))` }}
+    >
       {cncTutorialSteps.map((step, i) => {
         const state = stepState(i, stepIndex);
         return (
-          <div key={step.id} className="flex items-start">
-            <div className="flex w-9 flex-col items-center gap-1">
-              <div
-                className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full font-mono text-[10px] tabular-nums ring-1 ring-inset",
-                  state === "pending"
-                    ? "bg-muted text-muted-foreground ring-transparent"
-                    : TONE_CLASSES[toneOf(state)],
-                )}
-              >
-                {i + 1}
-              </div>
-              <span
-                className={cn(
-                  "text-[10px] uppercase tracking-wide",
-                  state === "pending"
-                    ? "text-muted-foreground"
-                    : TONE_TEXT[toneOf(state)],
-                )}
-              >
-                {step.shortLabel}
-              </span>
+          <li key={step.id} className="flex min-w-0 flex-col items-center gap-1">
+            <div
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full font-mono text-[10px] tabular-nums ring-1 ring-inset",
+                state === "pending"
+                  ? "bg-muted text-muted-foreground ring-transparent"
+                  : TONE_CLASSES[toneOf(state)],
+              )}
+            >
+              {i + 1}
             </div>
-            {i < cncTutorialSteps.length - 1 && (
-              <div
-                className={cn(
-                  "mt-3 h-px w-3",
-                  state === "done" ? "bg-emerald-500/40" : "bg-border",
-                )}
-              />
-            )}
-          </div>
+            <span
+              className={cn(
+                "max-w-full truncate text-[9px] tracking-tight",
+                state === "pending" ? "text-muted-foreground" : TONE_TEXT[toneOf(state)],
+              )}
+            >
+              {step.shortLabel}
+            </span>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -73,6 +65,8 @@ export function HudTutorialTracker() {
   const celebrationDismissed = useTutorialStore((s) => s.celebrationDismissed);
   const reset = useTutorialStore((s) => s.reset);
   const dismiss = useTutorialStore((s) => s.dismissCelebration);
+  const deviceMode = useSessionStore((s) => s.deviceMode);
+  const focusCamera = useSessionStore((s) => s.focusCamera);
 
   const currentStep = useCurrentStep();
   const currentPhase = useCurrentPhase();
@@ -84,7 +78,7 @@ export function HudTutorialTracker() {
         <div className="space-y-1">
           <h4 className="text-sm font-semibold tracking-tight">Machine ready</h4>
           <p className="text-xs/relaxed text-muted-foreground">
-            The startup sequence for the HAAS UMC-500 is complete.
+            Startup complete: homed, jogged and warmed up. The HAAS UMC-500 is ready to run a job.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -121,9 +115,16 @@ export function HudTutorialTracker() {
         <p className="text-xs/relaxed text-muted-foreground">{currentPhase.instruction}</p>
       </div>
 
-      <Button size="md" variant="secondary" onClick={reset}>
-        Reset
-      </Button>
+      <div className="flex items-center gap-2">
+        {deviceMode === "desktop" && currentPhase.highlight.length > 0 && (
+          <Button size="md" onClick={() => focusCamera(currentPhase.highlight[0])}>
+            Show me
+          </Button>
+        )}
+        <Button size="md" variant="secondary" onClick={reset}>
+          Reset
+        </Button>
+      </div>
     </div>
   );
 }

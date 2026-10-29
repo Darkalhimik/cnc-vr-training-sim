@@ -3,12 +3,7 @@
 import { Badge } from "@/shared/ui/badge";
 import { toneOf } from "@/shared/ui/tone";
 import { useMachineStore } from "@/entities/machine/machine-store";
-
-type Indicator = {
-  label: string;
-  /** The state word — both the value shown and the tone lookup key. */
-  state: string;
-};
+import { machineIndicators } from "@/entities/machine/machine-indicators";
 
 /**
  * Section body, not a card — it is composed into the side panel, which owns the
@@ -17,15 +12,7 @@ type Indicator = {
  */
 export function HudMachineStatus() {
   const machine = useMachineStore((s) => s.machine);
-
-  const indicators: Indicator[] = [
-    { label: "Air", state: machine.airValveOpen ? "on" : "off" },
-    { label: "Power", state: machine.powerOn ? "on" : "off" },
-    { label: "E-stop", state: machine.estop === "released" ? "free" : "lock" },
-    { label: "Door", state: machine.doorOpen ? "open" : "shut" },
-    { label: "Jog", state: machine.handleJogActive ? "on" : "off" },
-    { label: "Coolant", state: machine.coolantOn ? "on" : "off" },
-  ];
+  const indicators = machineIndicators(machine);
 
   return (
     <dl className="grid gap-1.5">

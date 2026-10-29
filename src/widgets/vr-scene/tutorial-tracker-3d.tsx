@@ -60,7 +60,7 @@ export function TutorialTracker3D() {
           maxWidth={PANEL_W - 0.2}
           textAlign="center"
         >
-          Startup sequence complete.{"\n"}HAAS UMC-500 is ready for use.
+          Startup complete: homed, jogged, warmed up.{"\n"}HAAS UMC-500 is ready for use.
         </Text>
       </PanelFrame>
     );
@@ -69,7 +69,7 @@ export function TutorialTracker3D() {
   if (status === "complete") return null;
   if (!currentStep || !currentPhase) return null;
 
-  const dotSpacing = 0.18;
+  const dotSpacing = 0.16;
   const dotRowWidth = (cncTutorialSteps.length - 1) * dotSpacing;
   const dotStartX = -dotRowWidth / 2;
   const totalPhases = currentStep.phases.length;

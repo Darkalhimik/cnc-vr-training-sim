@@ -3,19 +3,15 @@
 import { RoundedBox, Text } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useMachineStore } from "@/entities/machine/machine-store";
+import { machineIndicators } from "@/entities/machine/machine-indicators";
 import { PANEL, toneOf } from "./panel-theme";
 
 const PANEL_W = 1.2;
-const PANEL_H = 1.05;
 const PANEL_DEPTH = 0.04;
+const ROW_H = 0.1;
+const HEADER_H = 0.2;
 
 const noopRaycast: NonNullable<ThreeEvent<MouseEvent>>["object"]["raycast"] = () => {};
-
-type Indicator = {
-  label: string;
-  /** The state word — both the value shown and the tone lookup key. */
-  state: string;
-};
 
 /** The 3D counterpart of the DOM status pill: a tinted plate carrying the
  *  state word, so hue and text always arrive together. */
@@ -24,7 +20,7 @@ function StatePill({ state }: { state: string }) {
   return (
     <group>
       <mesh raycast={noopRaycast}>
-        <planeGeometry args={[0.26, 0.075]} />
+        <planeGeometry args={[0.3, 0.075]} />
         <meshBasicMaterial color={tone} transparent opacity={0.2} />
       </mesh>
       <Text position={[0, 0, 0.001]} fontSize={0.045} color={tone} anchorX="center" anchorY="middle">
@@ -36,18 +32,10 @@ function StatePill({ state }: { state: string }) {
 
 export function StatusBoard3D() {
   const machine = useMachineStore((s) => s.machine);
+  const indicators = machineIndicators(machine);
 
-  const indicators: Indicator[] = [
-    { label: "Air", state: machine.airValveOpen ? "on" : "off" },
-    { label: "Power", state: machine.powerOn ? "on" : "off" },
-    { label: "E-stop", state: machine.estop === "released" ? "free" : "lock" },
-    { label: "Door", state: machine.doorOpen ? "open" : "shut" },
-    { label: "Jog", state: machine.handleJogActive ? "on" : "off" },
-    { label: "Coolant", state: machine.coolantOn ? "on" : "off" },
-  ];
-
-  const rowHeight = 0.13;
-  const firstRowY = (indicators.length - 1) * rowHeight * 0.5;
+  const PANEL_H = HEADER_H + indicators.length * ROW_H + 0.08;
+  const firstRowY = PANEL_H / 2 - HEADER_H - ROW_H / 2;
   const surfaceZ = PANEL_DEPTH / 2 + 0.001;
 
   return (
@@ -60,7 +48,7 @@ export function StatusBoard3D() {
       </RoundedBox>
 
       <Text
-        position={[0, PANEL_H / 2 - 0.10, surfaceZ]}
+        position={[0, PANEL_H / 2 - HEADER_H / 2, surfaceZ]}
         fontSize={0.055}
         color={PANEL.text}
         anchorX="center"
@@ -70,7 +58,7 @@ export function StatusBoard3D() {
       </Text>
 
       {indicators.map((ind, i) => {
-        const y = firstRowY - i * rowHeight - 0.05;
+        const y = firstRowY - i * ROW_H;
         return (
           <group key={ind.label} position={[0, y, surfaceZ]}>
             <Text

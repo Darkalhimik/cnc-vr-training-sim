@@ -4,7 +4,7 @@ import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
 import { useSessionStore } from "@/features/session/session-store";
 import { useMachineStore } from "@/entities/machine/machine-store";
-import { MACHINE_PART_LABELS, MACHINE_PART_DESCRIPTIONS } from "@/entities/machine/machine-parts";
+import { MACHINE_PARTS } from "@/entities/machine/machine-parts";
 
 /**
  * Section body, not a card. The part-detail block is always rendered — with a
@@ -18,7 +18,7 @@ export function FreePlayOverlay() {
   const toggleHints = useSessionStore((s) => s.toggleHints);
   const reset = useMachineStore((s) => s.reset);
 
-  const part = hoveredPart && hoveredPart !== "body" ? hoveredPart : null;
+  const part = hoveredPart ? MACHINE_PARTS[hoveredPart] : null;
 
   return (
     <div className="space-y-3">
@@ -38,10 +38,10 @@ export function FreePlayOverlay() {
         {part ? (
           <>
             <h4 className="text-sm font-semibold tracking-tight">
-              {MACHINE_PART_LABELS[part]}
+              {part.label}
             </h4>
             <p className="text-xs/relaxed text-muted-foreground">
-              {MACHINE_PART_DESCRIPTIONS[part]}
+              {part.description}
             </p>
           </>
         ) : (

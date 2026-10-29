@@ -11,18 +11,19 @@ import {
 } from "@/features/session/session-store";
 
 const PANEL_W = 1.2;
-const PANEL_H = 0.6;
+const PANEL_H = 0.95;
 const PANEL_DEPTH = 0.04;
 
 
 type ButtonProps = {
   position: [number, number, number];
   label: string;
-  disabled: boolean;
+  disabled?: boolean;
   onClick: () => void;
+  width?: number;
 };
 
-function StepButton({ position, label, disabled, onClick }: ButtonProps) {
+function StepButton({ position, label, disabled = false, onClick, width = 0.22 }: ButtonProps) {
   const [hovered, setHovered] = useState(false);
   const color = disabled ? PANEL.controlDisabled : hovered ? PANEL.controlHover : PANEL.control;
 
@@ -39,12 +40,12 @@ function StepButton({ position, label, disabled, onClick }: ButtonProps) {
         }}
         onPointerOut={() => setHovered(false)}
       >
-        <boxGeometry args={[0.22, 0.22, 0.05]} />
+        <boxGeometry args={[width, 0.22, 0.05]} />
         <meshStandardMaterial color={color} roughness={0.5} metalness={0.1} />
       </mesh>
       <Text
         position={[0, 0, 0.03]}
-        fontSize={0.12}
+        fontSize={width > 0.3 ? 0.07 : 0.12}
         color={disabled ? PANEL.textMuted : PANEL.text}
         anchorX="center"
         anchorY="middle"
@@ -58,9 +59,11 @@ function StepButton({ position, label, disabled, onClick }: ButtonProps) {
 type Props = {
   value: number;
   onChange: (next: number) => void;
+  /** Turn the machine a quarter turn; the way round to its rear panel. */
+  onTurn: (direction: 1 | -1) => void;
 };
 
-export function SizePanel3D({ value, onChange }: Props) {
+export function SizePanel3D({ value, onChange, onTurn }: Props) {
   const surfaceZ = PANEL_DEPTH / 2 + 0.001;
 
   return (
@@ -83,7 +86,7 @@ export function SizePanel3D({ value, onChange }: Props) {
       </Text>
 
       <Text
-        position={[0, 0.02, surfaceZ]}
+        position={[0, PANEL_H / 2 - 0.24, surfaceZ]}
         fontSize={0.12}
         color={PANEL.text}
         anchorX="center"
@@ -93,16 +96,38 @@ export function SizePanel3D({ value, onChange }: Props) {
       </Text>
 
       <StepButton
-        position={[-PANEL_W / 2 + 0.18, -PANEL_H / 2 + 0.18, surfaceZ + 0.025]}
+        position={[-PANEL_W / 2 + 0.18, PANEL_H / 2 - 0.24, surfaceZ + 0.025]}
         label="−"
         disabled={value <= MACHINE_SCALE_MIN}
         onClick={() => onChange(value - MACHINE_SCALE_STEP)}
       />
       <StepButton
-        position={[PANEL_W / 2 - 0.18, -PANEL_H / 2 + 0.18, surfaceZ + 0.025]}
+        position={[PANEL_W / 2 - 0.18, PANEL_H / 2 - 0.24, surfaceZ + 0.025]}
         label="+"
         disabled={value >= MACHINE_SCALE_MAX}
         onClick={() => onChange(value + MACHINE_SCALE_STEP)}
+      />
+
+      <Text
+        position={[0, -0.12, surfaceZ]}
+        fontSize={0.045}
+        color={PANEL.textMuted}
+        anchorX="center"
+        anchorY="middle"
+      >
+        Turn machine
+      </Text>
+      <StepButton
+        position={[-0.27, -PANEL_H / 2 + 0.18, surfaceZ + 0.025]}
+        label="Left 90°"
+        width={0.46}
+        onClick={() => onTurn(-1)}
+      />
+      <StepButton
+        position={[0.27, -PANEL_H / 2 + 0.18, surfaceZ + 0.025]}
+        label="Right 90°"
+        width={0.46}
+        onClick={() => onTurn(1)}
       />
     </group>
   );
