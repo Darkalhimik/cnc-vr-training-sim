@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { isMachinePartId, type MachinePartId } from "@/entities/machine/machine-parts";
 import { BOOT_MS, spindleRpm } from "@/entities/machine/machine-logic";
+import { getActiveRun } from "@/entities/machine/machine-store";
+import { CAD_POSE } from "@/entities/machine/kinematics";
 import {
   AXES,
   type Axis,
@@ -20,8 +22,6 @@ import { drawPendantScreen, screenKey, type ScreenView } from "./pendant-screen"
  */
 export const MODEL_URL = "/models/umc500.glb";
 
-/** Machine position the CAD was drawn at; node offsets are relative to it. */
-const CAD_POSE: Record<Axis, number> = { x: -53, y: 0, z: -259, b: 0, c: 0 };
 
 /** How far the door slides to open, leaving the handle at the opening. */
 const DOOR_TRAVEL_M = 0.68;
@@ -65,7 +65,16 @@ const NODE_NAMES = {
   screen: "Screen",
   coolantNozzle: "Coolant_Nozzle",
   toolTip: "Tool_Tip",
+  stockMount: "Stock_Mount",
+  jawNeg: "Vise_JawNeg",
+  jawPos: "Vise_JawPos",
+  modelTool: "Tool",
 } as const;
+
+/** Half the jaw opening the model was built with (an 80 mm stock). */
+const JAW_REST_HALF_MM = 40;
+/** Half opening with the vise empty. */
+const JAW_OPEN_HALF_MM = 55;
 
 type RigNodes = { [K in keyof typeof NODE_NAMES]: THREE.Object3D };
 
@@ -98,6 +107,7 @@ export type MachineRig = {
     wheelTarget: number;
     bootStartedAt: number | null;
     pressedAt: Map<MachinePartId, number>;
+    jawHalf: number;
   };
 };
 
@@ -162,6 +172,10 @@ export function bindRig(scene: THREE.Object3D, initial: MachineState): MachineRi
   screenMesh.material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false });
   glows.delete("screen"); // it paints its own light
 
+  // The tool in the spindle is drawn from the tool table (SpindleTool), so
+  // the one modelled in the GLB only stands in for the CAD.
+  nodes.modelTool.visible = false;
+
   const beaconMesh = nodes.beacon as THREE.Mesh;
   const beacon = (beaconMesh.material as THREE.MeshStandardMaterial).clone();
   beaconMesh.material = beacon;
@@ -190,6 +204,7 @@ export function bindRig(scene: THREE.Object3D, initial: MachineState): MachineRi
       wheelTarget: 0,
       bootStartedAt: null,
       pressedAt: new Map(),
+      jawHalf: initial.stock ? initial.stock.size[0] / 2 : JAW_OPEN_HALF_MM,
     },
   };
 }
@@ -218,7 +233,6 @@ const BLACK = new THREE.Color("#000000");
 const BEACON = {
   green: new THREE.Color("#2bd96b"),
   red: new THREE.Color("#ff2a2a"),
-  amber: new THREE.Color("#ffb020"),
 };
 
 /** Lit like a key LED: the control is in the state this key selects. */
@@ -265,12 +279,19 @@ export function animateRig(
 
   // Axes ease towards the commanded position, so a zero return reads as
   // motion and a jog detent as a short move.
-  for (const axis of AXES) anim.position[axis] = ease(anim.position[axis], m.position[axis], 3.2, dt);
+  // A running program is followed exactly: the motion list already has the
+  // real path, and easing would round its corners.
+  const run = m.program !== "idle" ? getActiveRun() : null;
+  for (const axis of AXES) {
+    anim.position[axis] = run ? run.position[axis] : ease(anim.position[axis], m.position[axis], 3.2, dt);
+  }
   const p = anim.position;
   nodes.axisX.position.x = restOf(nodes.axisX).x + (p.x - CAD_POSE.x) / 1000;
   nodes.axisY.position.z = restOf(nodes.axisY).z - (p.y - CAD_POSE.y) / 1000;
   nodes.axisZ.position.y = restOf(nodes.axisZ).y + (p.z - CAD_POSE.z) / 1000;
-  nodes.axisB.rotation.set(0, 0, -THREE.MathUtils.degToRad(p.b - CAD_POSE.b));
+  // Axis_B's +Z (three) is the machine's −Y, so +B — a negative turn about
+  // machine +Y — is a positive turn about it.
+  nodes.axisB.rotation.set(0, 0, THREE.MathUtils.degToRad(p.b - CAD_POSE.b));
   nodes.axisC.rotation.set(0, THREE.MathUtils.degToRad(p.c - CAD_POSE.c), 0);
 
   // Spindle: real speed would strobe, so the drawn speed only suggests it.
@@ -279,6 +300,12 @@ export function animateRig(
   const visualRps = anim.rpm > 5 ? 1.5 + 6 * Math.sqrt(anim.rpm / 8100) : (anim.rpm / 5) * 1.5;
   anim.spindleAngle = (anim.spindleAngle + visualRps * 2 * Math.PI * dt) % (2 * Math.PI);
   nodes.spindle.rotation.set(0, anim.spindleAngle, 0);
+
+  // Vise jaws close onto the width of the stock along X.
+  anim.jawHalf = ease(anim.jawHalf, m.stock ? m.stock.size[0] / 2 : JAW_OPEN_HALF_MM, 6, dt);
+  const jawShift = (anim.jawHalf - JAW_REST_HALF_MM) / 1000;
+  nodes.jawNeg.position.x = restOf(nodes.jawNeg).x - jawShift;
+  nodes.jawPos.position.x = restOf(nodes.jawPos).x + jawShift;
 
   anim.door = ease(anim.door, m.doorOpen ? 1 : 0, 4, dt);
   nodes.door.position.x = restOf(nodes.door).x - DOOR_TRAVEL_M * anim.door;
@@ -331,15 +358,15 @@ export function animateRig(
     }
   }
 
-  // Beacon: red alarm, green running, flashing green ready, flashing amber
-  // while booting, dark when off.
+  // Beacon, as the NGC lights it (pendant.md §1.3): off when idle, solid
+  // green running, flashing green stopped and waiting for the operator,
+  // flashing red on a fault or E-stop.
   const blink = Math.sin(now * 6) > 0;
   let beacon: THREE.Color = BLACK;
-  if (m.control === "booting") beacon = blink ? BEACON.amber : BLACK;
-  else if (m.control === "on") {
-    if (m.alarms.length > 0) beacon = BEACON.red;
+  if (m.control === "on") {
+    if (m.alarms.length > 0 || m.estopPressed) beacon = blink ? BEACON.red : BLACK;
     else if (m.program === "running" || m.homingStage !== null) beacon = BEACON.green;
-    else beacon = blink ? BEACON.green : BLACK;
+    else if (m.program === "hold" || m.program === "stopped") beacon = blink ? BEACON.green : BLACK;
   }
   rig.beacon.emissive.copy(beacon);
   rig.beacon.emissiveIntensity = beacon === BLACK ? 0 : 2.2;
@@ -347,15 +374,7 @@ export function animateRig(
   // Screen: repaint when what it shows changes, at most 15 times a second.
   if (m.control === "booting") anim.bootStartedAt ??= now;
   else anim.bootStartedAt = null;
-  const view: ScreenView = {
-    machine: m,
-    message,
-    position: anim.position,
-    rpm: Math.round(anim.rpm),
-    bootProgress:
-      anim.bootStartedAt === null ? 0 : Math.min(1, ((now - anim.bootStartedAt) * 1000) / BOOT_MS),
-    blink,
-  };
+  const view = screenView(rig, m, message);
   const key = screenKey(view);
   if (key !== rig.screen.key && now - rig.screen.drawnAt > 1 / 15) {
     drawPendantScreen(rig.screen.canvas, view);
@@ -363,4 +382,21 @@ export function animateRig(
     rig.screen.key = key;
     rig.screen.drawnAt = now;
   }
+}
+
+/** What the control screen shows right now, from the rig's live values. */
+export function screenView(rig: MachineRig, m: MachineState, message: string | null): ScreenView {
+  const { anim } = rig;
+  const run = m.program !== "idle" ? getActiveRun() : null;
+  const move = run?.result.motions[run.cursor.index];
+  return {
+    machine: m,
+    message,
+    position: anim.position,
+    moveEnd: move && (move.kind === "rapid" || move.kind === "feed") ? move.to : null,
+    rpm: Math.round(anim.rpm),
+    bootProgress:
+      anim.bootStartedAt === null ? 0 : Math.min(1, ((anim.now - anim.bootStartedAt) * 1000) / BOOT_MS),
+    blink: Math.sin(anim.now * 6) > 0,
+  };
 }

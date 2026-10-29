@@ -5,6 +5,8 @@ import { createXRStore } from "@react-three/xr";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import { useSessionStore } from "@/features/session/session-store";
 import { useTutorialSync } from "@/features/tutorial/tutorial-store";
+import { useJobStore } from "@/features/part-development/job-store";
+import { PartWorkspace } from "@/features/part-development/ui/workspace";
 import { ClientOnly } from "@/shared/ui/client-only";
 import { HudNotification } from "@/widgets/hud/hud-notification";
 import { HudSidePanel } from "@/widgets/hud/hud-side-panel";
@@ -33,6 +35,8 @@ export function SimulationShell({ deviceMode, gameMode }: SimulationShellProps) 
   const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
 
   useTutorialSync(gameMode === "tutorial");
+  const workspaceOpen = useJobStore((s) => s.workspaceOpen);
+  const showWorkspace = gameMode === "develop" && deviceMode === "desktop" && workspaceOpen;
 
   useEffect(() => {
     setDeviceMode(deviceMode);
@@ -66,6 +70,14 @@ export function SimulationShell({ deviceMode, gameMode }: SimulationShellProps) 
             onSessionInfo={setXrSessionInfo}
           />
         </ClientOnly>
+
+        {/* Part development's design and program editor sits over the left
+            of the stage, so the machine stays in view beside it. */}
+        {showWorkspace && (
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10">
+            <PartWorkspace />
+          </div>
+        )}
 
         {/* Toasts stay over the viewport — they report what an interaction with
             the machine just did, and belong next to the machine, not filed in

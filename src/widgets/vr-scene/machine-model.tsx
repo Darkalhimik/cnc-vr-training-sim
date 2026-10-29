@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import { createPortal, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { CoolantStream } from "./coolant-voxels";
 import { GuideArrows } from "./arrows";
+import { useRigRegistry } from "./rig-registry";
+import { SpindleTool } from "./workpiece";
+import { MachineRuntime } from "./machine-runtime";
 import {
   MODEL_URL,
   animateRig,
@@ -40,6 +43,11 @@ export function MachineModel({ highlightedParts, hoveredPart, onPartInteract, on
     [scene],
   );
   const highlighted = useMemo(() => new Set(highlightedParts), [highlightedParts]);
+  const setRig = useRigRegistry((s) => s.setRig);
+  useEffect(() => {
+    setRig(rig);
+    return () => setRig(null);
+  }, [rig, setRig]);
 
   useFrame(({ clock }, dt) => {
     const { machine, message } = useMachineStore.getState();
@@ -78,6 +86,8 @@ export function MachineModel({ highlightedParts, hoveredPart, onPartInteract, on
       />
       <GuideArrows anchors={rig.anchors} highlightedParts={highlightedParts} />
       {createPortal(<CoolantStream rig={rig} />, rig.nodes.coolantNozzle)}
+      {createPortal(<SpindleTool />, rig.nodes.spindle)}
+      {createPortal(<MachineRuntime rig={rig} />, rig.nodes.stockMount)}
     </>
   );
 }

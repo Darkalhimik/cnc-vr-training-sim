@@ -23,9 +23,12 @@ type SessionStore = {
   machineScale: number;
   /** Rotation of the whole machine about the vertical, in radians. */
   machineYaw: number;
-  /** A request for the desktop camera to frame a part. `seq` changes on
-   *  every request, so asking for the same part twice still moves it. */
-  cameraFocus: { part: MachinePartId; seq: number } | null;
+  /** A request for the desktop camera to frame a scene node (a part's
+   *  anchor, or the full panel). `seq` changes on every request, so asking for
+   *  the same node twice still moves it. */
+  cameraFocus: { node: string; seq: number } | null;
+  /** The full-size NGC pendant beside the machine. */
+  fullPanelOpen: boolean;
 
   setDeviceMode: (mode: DeviceMode) => void;
   setGameMode: (mode: GameMode) => void;
@@ -35,6 +38,8 @@ type SessionStore = {
   setMachineScale: (scale: number) => void;
   turnMachine: (direction: 1 | -1) => void;
   focusCamera: (part: MachinePartId) => void;
+  focusNode: (name: string) => void;
+  setFullPanelOpen: (open: boolean) => void;
 };
 
 function clampScale(scale: number) {
@@ -53,6 +58,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
   machineScale: 1.0,
   machineYaw: 0,
   cameraFocus: null,
+  fullPanelOpen: false,
 
   setDeviceMode: (mode) => set({ deviceMode: mode }),
   setGameMode: (mode) => set({ gameMode: mode }),
@@ -64,6 +70,8 @@ export const useSessionStore = create<SessionStore>((set) => ({
     set((s) => ({
       machineYaw: (s.machineYaw + direction * MACHINE_YAW_STEP + 2 * Math.PI) % (2 * Math.PI),
     })),
+  setFullPanelOpen: (open) => set({ fullPanelOpen: open }),
   focusCamera: (part) =>
-    set((s) => ({ cameraFocus: { part, seq: (s.cameraFocus?.seq ?? 0) + 1 } })),
+    set((s) => ({ cameraFocus: { node: `Anchor_${part}`, seq: (s.cameraFocus?.seq ?? 0) + 1 } })),
+  focusNode: (node) => set((s) => ({ cameraFocus: { node, seq: (s.cameraFocus?.seq ?? 0) + 1 } })),
 }));

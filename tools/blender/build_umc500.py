@@ -19,7 +19,8 @@ tops, all occupying the same space. This script
   3. cuts the CAD's controls off the pendant face and replaces them with
      separate, labelled, pressable ones, a screen and a status beacon;
   4. adds what the CAD leaves out: the air regulator with its gauge and shut-off
-     valve on the rear panel, and the main disconnect on the electrical cabinet.
+     valve on the rear panel, the main disconnect on the electrical cabinet,
+     and a riser with a 5-axis vise on the platter for the stock.
 
 Contract with the app (src/widgets/vr-scene/machine-rig.ts):
   - a node the trainee can point at carries a `part` custom property, exported
@@ -88,6 +89,7 @@ RIG_NODES = (
     "Axis_X", "Axis_Y", "Axis_Z", "Spindle", "Axis_B", "Axis_C",
     "Door", "EStop", "Handwheel", "AirValve_Lever", "AirGauge_Needle",
     "MainSwitch_Handle", "Beacon", "Screen", "Coolant_Nozzle", "Tool_Tip",
+    "Stock_Mount", "Vise_JawNeg", "Vise_JawPos",
 )
 
 # --- measured geometry -------------------------------------------------------
@@ -119,6 +121,11 @@ ESTOP = (0.3371, 1.4970)
 HANDWHEEL = (0.3371, 1.3800)
 CYCLE_START = (0.3104, 1.2672)
 FEED_HOLD = (0.3645, 1.2672)
+
+# Work-holding on the platter (table frame, metres above the platter top).
+VISE_RISER = 0.055
+VISE_TOP = 0.100
+JAW_GRIP = 0.008
 
 # Rear panel and electrical cabinet faces.
 REAR_FACE_Y = 1.1485
@@ -171,6 +178,8 @@ def build_materials():
         "pendant": material("M_PendantBody", "#2e3136", 0.1, 0.55),
         "fascia": material("M_Fascia", "#24272b", 0.05, 0.6),
         "key_live": material("M_KeyLive", "#dfe1e3", 0.0, 0.55),
+        "key_panel": material("M_KeyPanel", "#2f6fdc", 0.0, 0.5),
+        "vise": material("M_ViseBody", "#3d4a57", 0.35, 0.45),
         "key_dummy": material("M_KeyDummy", "#9aa0a6", 0.0, 0.6),
         "key_label": material("M_KeyLabel", "#16181a", 0.0, 0.7),
         "label_light": material("M_LabelLight", "#f2f3f4", 0.0, 0.6),
@@ -224,10 +233,16 @@ def frame(name, origin, right, up, parent=None):
     return link(ob, parent, Matrix.Translation(origin) @ rot)
 
 
-def anchor(part, parent, at, arrow_scale=1.0):
+def anchor(part, parent, at, arrow_scale=1.0, tilt_x=0.0, frontal=False):
+    """`tilt_x` turns the anchor's out axis (+Z) about X, e.g. to look out of
+    the door rather than straight up; `frontal` asks the camera to frame it
+    square on instead of from an angle."""
     ob = empty(f"Anchor_{part}", parent, at, size=0.02)
+    ob.rotation_euler = (math.radians(tilt_x), 0, 0)
     ob["anchorFor"] = part
     ob["arrowScale"] = arrow_scale
+    if frontal:
+        ob["frontal"] = True
     return ob
 
 
@@ -525,6 +540,7 @@ def build():
     platter.name = "Platter"
     set_mats(platter, M["steel"])
     reparent_keep_world(platter, axis_c)
+    build_vise(axis_c, M)
 
     build_door(cad["door"], root, M)
     build_pendant(cad["pendant"], root, M)
@@ -683,7 +699,7 @@ def build_pendant(cad_pendant, root, M):
         (("X", "axis_x"), ("Y", "axis_y"), ("Z", "axis_z"), ("B", "axis_b"), ("C", "axis_c"), ("COOLANT", "coolant")),
         (("7", None), ("8", None), ("9", None), ("PROGRAM", None), ("POSIT", None), ("OFFSET", None)),
         (("4", None), ("5", None), ("6", None), ("SETTING", None), ("ALARMS", None), ("HELP", None)),
-        (("1", None), ("2", None), ("3", None), ("0", None), (".", None), ("WRITE", None)),
+        (("1", None), ("2", None), ("3", None), ("0", None), (".", None), ("FULL\nPANEL", "full_panel")),
     )
     dummies = Geo()
     for r, row in enumerate(layout):
@@ -696,7 +712,14 @@ def build_pendant(cad_pendant, root, M):
                 key.box((pitch_x - 0.005, pitch_z - 0.006, 0.005), (0, 0, 0.0025), 0)
                 key.text(text, size, (0, 0, 0.0052), 1)
                 name = "Key_" + "".join(w.capitalize() for w in part.split("_"))
-                key.build(name, [M["key_live"], M["key_label"]], pend, (x, z, key_z + 0.002), part=part)
+                # Not a Haas key: it opens the app's full-size pendant, so it
+                # is coloured apart from the real ones.
+                mats = (
+                    [M["key_panel"], M["label_light"]]
+                    if part == "full_panel"
+                    else [M["key_live"], M["key_label"]]
+                )
+                key.build(name, mats, pend, (x, z, key_z + 0.002), part=part)
                 anchor(part, pend, (x, z, key_z + 0.009), 0.45)
             else:
                 dummies.box((pitch_x - 0.005, pitch_z - 0.006, 0.005), (x, z, key_z + 0.0045), 0)
@@ -761,6 +784,29 @@ def build_air_supply(root, M):
     lever_ob = lever.build("AirValve_Lever", [M["valve_lever"]], valve, (0.13, 0.06, 0.08))
     lever_ob.rotation_euler = (0, 0, -math.pi / 2)
     anchor("air_valve", valve, (0.13, 0.03, 0.1))
+
+
+def build_vise(axis_c, M):
+    """Riser and self-centring 5-axis vise on the platter, with the empty the
+    app hangs the stock from. Tall on purpose: on B = -90 the side faces of
+    the part have to clear the platter and the head."""
+    vise = Geo()
+    vise.cyl(0.055, VISE_RISER, (0, 0, VISE_RISER / 2), 0, segments=40)
+    vise.box((0.14, 0.07, VISE_TOP - VISE_RISER), (0, 0, (VISE_TOP + VISE_RISER) / 2), 0)
+    # Lead screw ends, so the jaw travel reads.
+    vise.cyl(0.008, 0.15, (0, 0, VISE_TOP - 0.012), 1, axis="X", segments=16)
+    body = vise.build("Vise", [M["vise"], M["steel"]], axis_c)
+    body["part"] = "vise"
+    # Jaws grip the bottom JAW_GRIP of the stock. Rest pose: closed on the
+    # default 80 mm stock; the app moves them along X to the stock's width.
+    for name, side in (("Vise_JawNeg", -1), ("Vise_JawPos", 1)):
+        jaw = Geo()
+        jaw.box((0.025, 0.07, 0.016), (side * 0.0125, 0, JAW_GRIP - 0.008), 0)
+        ob = jaw.build(name, [M["steel"]], axis_c, (side * 0.040, 0, VISE_TOP))
+        ob["part"] = "vise"
+    empty("Stock_Mount", axis_c, (0, 0, VISE_TOP), size=0.02)
+    # Seen from in front of the door, over the platter, not from the roof.
+    anchor("vise", axis_c, (0, -0.06, VISE_TOP + 0.03), tilt_x=63.4, frontal=True)
 
 
 def build_main_switch(root, M):

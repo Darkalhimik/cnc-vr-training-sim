@@ -54,12 +54,30 @@ npm install
 npm run dev
 ```
 
-App routes:
+Routes are `/play/<device>/<mode>`: device `desktop`, `vr` or `ar`; mode
+`tutorial`, `freeplay` or `develop`.
 
-- `https://localhost:3000/desktop`
-- `https://localhost:3000/vr`
-- `https://localhost:3000/ar`
-- `https://localhost:3000/tutorial`
+## Modes
+
+- **Tutorial** — the Haas startup, guided step by step (below).
+- **Free play** — the machine with no script; hover a part to read what it is.
+- **Part development** — design a part or write its G-code on desktop, set up
+  the vise, tools and offsets, run it on the machine and watch the stock being
+  cut, then export the result as STL. Setup and running work in VR and AR
+  too; the setup checklist is a 3D board there.
+
+Devices: `desktop` (mouse; zoom follows the cursor, **Show me** flies the
+camera to the next control), `vr` (WebXR headset; the machine at real scale,
+turned in quarter turns from the size panel to reach its back), `ar`.
+
+## The pendant
+
+The machine's own pendant is the simplified one; its blue **FULL PANEL** key
+(or *Open full panel* in the side panel) opens the complete NGC pendant at
+full size beside the machine: all 132 keys at the positions measured from
+Haas's keyboard drawing, the physical controls, the side-panel switches and
+a live screen. The keyboard is one painted texture, like the real membrane,
+so it costs one draw call in a headset.
 
 ## Tutorial steps
 
@@ -83,13 +101,51 @@ step keeps a guard: undo one — shut the air off, open the door — and the
 tutorial sends the trainee back to it, then skips back up past every later step
 whose outcome still holds.
 
-## Machine logic
+## Machine and control
 
-`src/entities/machine/machine-logic.ts` is the whole machine as a pure
-`reduce(state, action)`: interlocks (door hold, low air, E-stop, mains cut
-under load), alarms, modes, travel limits and the timed processes. A slow
-process asks for a timer; the store feeds it back in as an action, so every
-rule is testable without a clock.
+`src/entities/machine/machine-logic.ts` is the machine and its NGC control as
+a pure `reduce(state, action)`: interlocks (door hold, low air, E-stop, mains
+cut under load), alarms, the six modes (EDIT, MEMORY, MDI, HANDLE JOG, ZERO
+RETURN, LIST PROGRAM), display pages, handle increments, overrides, work and
+tool offset tables (F1 sets, ENTER adds, PART ZERO SET, TOOL OFFSET
+MEASURE), program memory and MDI. Behaviour follows the research in
+`docs/haas-ngc/`.
+
+- **Programs** run through `src/entities/nc` — a Haas-dialect G-code
+  interpreter: arcs, canned cycles, cutter compensation, work/tool offsets,
+  subprograms, macro B, G254 dynamic work offset and G234 TCPC through the
+  trunnion kinematics in `src/entities/machine/kinematics.ts`. CYCLE START
+  interprets the active program against the machine's offsets, tool table
+  and retained macro variables; `program-run.ts` plays the result in time
+  with overrides, single block, M00/M01 and feed hold, and reports back what
+  the control keeps: G10 and `#2001`/`#5221`-style offset writes, `#500`–`#999`,
+  the work offset in use, and the active codes CURRENT COMMANDS shows. An
+  interpreter alarm stops the run at its block, as on the real control.
+- **Check before running**: the workspace's Program tab runs the interpreter
+  against the ideal setup or the machine as it is set up now, and flags
+  moves that would put a real tool tip into the vise or the platter — the
+  crash an unmeasured tool or a wrong G54 Z causes, which the control cannot
+  see.
+- **Cutting** is `src/features/part-development/removal`: a 5-axis
+  signed-distance voxel engine in a Web Worker, meshed with surface nets.
+  Every tool movement — program or hand jog — is swept through the stock;
+  a shank or holder contact, a rapid into material or a cut with the spindle
+  stopped is a crash alarm.
+- **CAM** (`src/entities/part/cam.ts`) writes Haas-style programs from the
+  feature-based designer: 3+2 indexing with G254 for side faces, G41 on
+  contours, canned cycles for holes.
+
+Checks (no test runner in the repo; each compiles with the repo's
+TypeScript and prints a pass/fail table):
+
+```bash
+node tools/logic-check/run.mjs     # reducer, control, tutorial, program runs end to end
+node tools/nc-check/run.mjs        # G-code interpreter, 38 golden cases
+node tools/removal-check/run.mjs   # removal accuracy, collisions, timing
+```
+
+The removal timing checks assume an otherwise idle machine; under load they
+can miss their budgets while the accuracy checks still pass.
 
 ## Model
 
@@ -113,6 +169,14 @@ The app binds to the model by data, not coordinates: pointable nodes carry a
 empties, and the moving nodes keep the names listed in `RIG_NODES` in the
 script and `NODE_NAMES` in `src/widgets/vr-scene/machine-rig.ts`. A new
 control is added in the script and in `machine-parts.ts`, nowhere else.
+
+## Research
+
+`docs/haas-ngc/` is the spec the control was built from: pendant layout,
+operation, G- and M-codes, settings and alarms, UMC-500 data. Each file lists
+its sources and what could not be confirmed (notably the B-axis sign, which
+this model takes as Haas documents it: −35° to +120°, +B tipping the platter
+towards −X).
 
 ## Notes
 

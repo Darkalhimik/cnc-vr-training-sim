@@ -3,26 +3,39 @@
 ```
 assets/cad/UMC-500_SS_02_2026.glb      Haas configurator CAD (source)
 tools/blender/build_umc500.py          CAD -> rigged public/models/umc500.glb
+tools/{logic,nc,removal}-check/        check scripts (no test runner)
+docs/haas-ngc/                         NGC control and UMC-500 research
 src
 ├─ app                                 routes; /play/[device]/[gameMode]
-├─ entities/machine
-│  ├─ machine-types.ts                 state, axes, alarms
-│  ├─ machine-parts.ts                 part registry (ids the model binds to)
-│  ├─ machine-logic.ts                 pure reducer: rules, interlocks, timers
-│  ├─ machine-store.ts                 zustand store; runs the reducer's timers
-│  └─ machine-indicators.ts            status list shared by DOM and VR boards
+├─ entities
+│  ├─ machine
+│  │  ├─ machine-types.ts              state, modes, alarms, offsets
+│  │  ├─ machine-parts.ts              part registry (ids the model binds to)
+│  │  ├─ machine-logic.ts              pure reducer: rules, NGC keys, timers
+│  │  ├─ machine-store.ts              zustand; timers; starts program runs
+│  │  ├─ program-playback.ts           plays interpreted motions in time
+│  │  ├─ program-run.ts                CYCLE START -> interpreter; frames ->
+│  │  │                                reducer actions (scene and tests share it)
+│  │  ├─ kinematics.ts                 machine <-> table/stock frames, B/C
+│  │  └─ machine-indicators.ts         status list for DOM and VR boards
+│  ├─ nc                               Haas G-code interpreter
+│  └─ part                             part design, tool library, CAM
 ├─ features
 │  ├─ cnc-tutorial                     steps/, tutorial-engine.ts (pure)
 │  ├─ tutorial/tutorial-store.ts       cursor + useTutorialSync
+│  ├─ part-development                 job store, setup checklist, workspace,
+│  │                                   program-check.ts (alarms + crashes
+│  │                                   before a run), removal/ (cutting engine)
 │  ├─ session                          device/game mode, scale, yaw, focus
 │  └─ simulation, free-play, theme
 ├─ widgets
 │  ├─ vr-scene
 │  │  ├─ machine-rig.ts                binds the GLB, animates it from state
 │  │  ├─ machine-model.tsx             loads the GLB, pointer events
-│  │  ├─ pendant-screen.ts             paints the NGC screen
-│  │  ├─ arrows.tsx, coolant-voxels.tsx  portalled into model nodes
+│  │  ├─ machine-runtime.tsx           runs programs, sweeps the stock
+│  │  ├─ pendant-screen.ts             paints the NGC screen pages
 │  │  └─ *-3d.tsx                      in-scene boards for VR/AR
+│  ├─ full-pendant                     the full-size NGC pendant
 │  └─ hud, landing, theme-toggle
 └─ shared                              ui kit, tones, notifications
 ```

@@ -18,6 +18,11 @@ const gameModes: { value: GameMode; title: string; desc: string }[] = [
     title: "Free play",
     desc: "Inspect the machine and test controls without scripted guidance.",
   },
+  {
+    value: "develop",
+    title: "Part development",
+    desc: "Design a part or write its G-code, set up the vise, tools and offsets, then machine it and inspect the result.",
+  },
 ];
 
 const deviceModes: { value: DeviceMode; title: string; desc: string }[] = [

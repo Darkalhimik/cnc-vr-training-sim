@@ -31,11 +31,13 @@ export const MACHINE_PART_IDS = [
   "feed_hold",
   "screen",
   "pendant",
+  "full_panel",
   // Machine.
   "door",
   "enclosure",
   "spindle",
   "trunnion",
+  "vise",
   "tool_changer",
 ] as const;
 
@@ -134,6 +136,11 @@ export const MACHINE_PARTS: Record<MachinePartId, MachinePart> = {
     description: "Mode, alarms, machine position and spindle speed.",
     kind: "indicator",
   },
+  full_panel: {
+    label: "Full panel",
+    description: "Not a Haas key: opens the complete NGC pendant at full size beside the machine.",
+    kind: "control",
+  },
   pendant: {
     label: "Operator pendant",
     description: "The Haas NGC control: screen, keypad, handwheel and the machine's start and stop buttons.",
@@ -156,7 +163,12 @@ export const MACHINE_PARTS: Record<MachinePartId, MachinePart> = {
   },
   trunnion: {
     label: "Trunnion table",
-    description: "Tilts on B (+35° to −110°) and rotates the platter on C (360°).",
+    description: "Tilts on B (−35° to +120°) and rotates the platter on C (360°).",
+    kind: "info",
+  },
+  vise: {
+    label: "5-axis vise",
+    description: "Self-centring vise on a riser. Its height lets the head reach the part's sides with the trunnion tilted.",
     kind: "info",
   },
   tool_changer: {

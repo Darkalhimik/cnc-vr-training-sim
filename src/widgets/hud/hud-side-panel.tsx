@@ -12,6 +12,7 @@ import {
   useSessionStore,
 } from "@/features/session/session-store";
 import { FreePlayOverlay } from "@/features/free-play/ui/freeplay-overlay";
+import { PartDevelopmentPanel } from "@/features/part-development/ui/part-development-panel";
 import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
@@ -19,7 +20,14 @@ import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 const gameModeOptions: { value: GameMode; label: string }[] = [
   { value: "tutorial", label: "Tutorial" },
   { value: "freeplay", label: "Free play" },
+  { value: "develop", label: "Part dev" },
 ];
+
+const GAME_MODE_TITLE: Record<GameMode, string> = {
+  tutorial: "Tutorial",
+  freeplay: "Free play",
+  develop: "Part development",
+};
 
 const deviceModeOptions: { value: DeviceMode; label: string }[] = [
   { value: "desktop", label: "Desktop" },
@@ -82,6 +90,8 @@ export function HudSidePanel({
   const machineScale = useSessionStore((s) => s.machineScale);
   const setMachineScale = useSessionStore((s) => s.setMachineScale);
   const turnMachine = useSessionStore((s) => s.turnMachine);
+  const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
 
   const isImmersive = deviceMode === "vr" || deviceMode === "ar";
 
@@ -123,8 +133,10 @@ export function HudSidePanel({
         <HudMachineStatus />
       </Section>
 
-      <Section title={gameMode === "tutorial" ? "Tutorial" : "Free play"}>
-        {gameMode === "tutorial" ? <HudTutorialTracker /> : <FreePlayOverlay />}
+      <Section title={GAME_MODE_TITLE[gameMode]}>
+        {gameMode === "tutorial" && <HudTutorialTracker />}
+        {gameMode === "freeplay" && <FreePlayOverlay />}
+        {gameMode === "develop" && <PartDevelopmentPanel />}
       </Section>
 
       <Section title="View" trailing={`${machineScale.toFixed(2)}×`}>
@@ -150,6 +162,17 @@ export function HudSidePanel({
               Right 90°
             </Button>
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Pendant</span>
+          <Button
+            size="md"
+            variant={fullPanelOpen ? "primary" : "secondary"}
+            className="ml-auto"
+            onClick={() => setFullPanelOpen(!fullPanelOpen)}
+          >
+            {fullPanelOpen ? "Close full panel" : "Open full panel"}
+          </Button>
         </div>
       </Section>
 

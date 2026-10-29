@@ -6,7 +6,7 @@ import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
 import { SimulationShell } from "@/features/simulation/simulation-shell";
 
 const VALID_DEVICES = ["desktop", "vr", "ar"] as const;
-const VALID_MODES = ["tutorial", "freeplay"] as const;
+const VALID_MODES = ["tutorial", "freeplay", "develop"] as const;
 
 function isValidDevice(d: string): d is DeviceMode {
   return (VALID_DEVICES as readonly string[]).includes(d);

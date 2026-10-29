@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { XR, useXR, type createXRStore } from "@react-three/xr";
@@ -11,7 +11,11 @@ import { useSessionStore } from "@/features/session/session-store";
 import { useTutorialHighlights } from "@/features/tutorial/tutorial-store";
 import { CncMachine } from "./cnc-machine";
 import { CameraFocus } from "./camera-focus";
+import { useMachineStore } from "@/entities/machine/machine-store";
+import { FullPendant3D } from "@/widgets/full-pendant/full-pendant-3d";
+import { showToast } from "@/shared/ui/toast";
 import { TutorialTracker3D } from "./tutorial-tracker-3d";
+import { JobBoard3D } from "./job-board-3d";
 import { StatusBoard3D } from "./status-board-3d";
 import { SizePanel3D } from "./size-panel-3d";
 import { WarningBoard3D } from "./warning-board-3d";
@@ -95,6 +99,21 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
   const machineYaw = useSessionStore((state) => state.machineYaw);
   const setMachineScale = useSessionStore((state) => state.setMachineScale);
   const turnMachine = useSessionStore((state) => state.turnMachine);
+  const fullPanelOpen = useSessionStore((state) => state.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((state) => state.setFullPanelOpen);
+  const focusNode = useSessionStore((state) => state.focusNode);
+  const focusCamera = useSessionStore((state) => state.focusCamera);
+
+  // On desktop, opening the full panel brings the camera to it, and closing
+  // it brings the camera back to the machine's own pendant.
+  const panelWasOpen = useRef(fullPanelOpen);
+  useEffect(() => {
+    const wasOpen = panelWasOpen.current;
+    panelWasOpen.current = fullPanelOpen;
+    if (mode !== "desktop") return;
+    if (fullPanelOpen) focusNode("FullPanel_View");
+    else if (wasOpen) focusCamera("screen");
+  }, [fullPanelOpen, mode, focusNode, focusCamera]);
 
   const highlightedParts = useMemo(() => {
     if (gameMode === "tutorial") {
@@ -149,6 +168,11 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
                     <TutorialTracker3D />
                   </group>
                 )}
+                {gameMode === "develop" && (
+                  <group position={[-2.2, 1.55, 1.5]} rotation={[0, Math.PI / 6, 0]}>
+                    <JobBoard3D />
+                  </group>
+                )}
                 <group position={[2.2, 1.45, 1.5]} rotation={[0, -Math.PI / 6, 0]}>
                   <StatusBoard3D />
                 </group>
@@ -162,6 +186,25 @@ export function VrScene({ mode, gameMode, xrStore, onSessionInfo }: VrSceneProps
               </>
             )}
           </group>
+
+          {/* The full-size pendant stands to the right of the machine, turned
+              towards the operator. Unscaled: it is read, not inspected. */}
+          {fullPanelOpen && (
+            <group position={sceneGroupPosition}>
+              <group position={[2.05, 1.32, 1.3]} rotation={[0, -0.55, 0]}>
+                <FullPendant3D
+                  onPartInteract={interactWithPart}
+                  onKey={(id, shift) => {
+                    const { rejected, notice } = useMachineStore.getState().pressKey(id, shift);
+                    const message = rejected ?? notice;
+                    if (message) showToast(message, rejected ? "warning" : "info");
+                  }}
+                  onUnhandledKey={(label) => showToast(`${label}: not simulated yet.`, "info")}
+                  onClose={() => setFullPanelOpen(false)}
+                />
+              </group>
+            </group>
+          )}
 
           {/* Outside the scaled group on purpose: a safety warning that shrinks
               with the machine stops being a warning. */}
