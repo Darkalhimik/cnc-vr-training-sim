@@ -2,80 +2,74 @@
 
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { InstancedMesh, Object3D } from "three";
+import { InstancedMesh, Object3D, Vector3 } from "three";
+import { useMachineStore } from "@/entities/machine/machine-store";
+import type { MachineRig } from "./machine-rig";
 
 const dummy = new Object3D();
+const COUNT = 120;
 
-type CoolantVoxelsProps = {
-  active: boolean;
-};
-
-export function CoolantVoxels({ active }: CoolantVoxelsProps) {
+/**
+ * Flood coolant from the nozzle on the spindle head, aimed at the tool tip.
+ * Rendered inside the nozzle node, so it rides along with the head on every
+ * axis move.
+ */
+export function CoolantStream({ rig }: { rig: MachineRig }) {
   const meshRef = useRef<InstancedMesh>(null);
 
+  // Both nodes hang off the Z axis without rotation, so the offset between
+  // them is the jet's direction in nozzle space.
+  const jet = useMemo(
+    () => rig.nodes.toolTip.position.clone().sub(rig.nodes.coolantNozzle.position),
+    [rig],
+  );
   const seeds = useMemo(
     () =>
-      Array.from({ length: 144 }, (_, index) => {
-        const nozzleIndex = index % 2;
-        return {
-          nozzleIndex,
-          phase: (index % 24) / 24,
-          radius: 0.05 + ((index * 17) % 11) * 0.008,
-          swirl: (index % 9) * 0.6,
-        };
-      }),
+      Array.from({ length: COUNT }, (_, i) => ({
+        phase: (i * 0.61803) % 1,
+        spread: new Vector3(
+          Math.sin(i * 12.9898) * 0.5,
+          Math.sin(i * 78.233) * 0.5,
+          Math.sin(i * 39.425) * 0.5,
+        ),
+      })),
     [],
   );
 
   useFrame(({ clock }) => {
     const mesh = meshRef.current;
-    if (!mesh) {
-      return;
-    }
+    if (!mesh) return;
+    const active = useMachineStore.getState().machine.coolantOn;
+    mesh.visible = active;
+    if (!active) return;
 
     const t = clock.elapsedTime;
-
-    seeds.forEach((seed, index) => {
-      if (!active) {
-        dummy.position.set(0, -10, 0);
-        dummy.scale.setScalar(0.0001);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(index, dummy.matrix);
-        return;
-      }
-
-      const progress = (t * 0.95 + seed.phase) % 1;
-      const splash = Math.max(0, progress - 0.72) / 0.28;
-      const nozzleX = seed.nozzleIndex === 0 ? -0.22 : 0.16;
-      const nozzleZ = seed.nozzleIndex === 0 ? 0.18 : -0.04;
-      const drift = Math.sin(t * 4 + index * 0.37) * 0.015;
-      const spiral = seed.radius * (0.35 + progress * 0.65);
-
-      dummy.position.set(
-        nozzleX + Math.cos(seed.swirl + t * 2.4) * spiral + drift,
-        1.54 - progress * 0.92 + Math.sin(t * 8 + index) * 0.015 - splash * 0.06,
-        nozzleZ + Math.sin(seed.swirl + t * 2.9) * spiral,
-      );
-      dummy.scale.setScalar(0.012 - splash * 0.003);
-      dummy.rotation.set(seed.swirl, progress * Math.PI * 2, 0);
+    seeds.forEach((seed, i) => {
+      const k = (t * 1.6 + seed.phase) % 1;
+      // Past the tip the stream splashes outwards and falls.
+      const splash = Math.max(0, k - 0.75) / 0.25;
+      dummy.position
+        .copy(jet)
+        .multiplyScalar(k)
+        .addScaledVector(seed.spread, 0.004 + 0.04 * splash);
+      dummy.position.y -= 0.12 * splash * splash;
+      dummy.scale.setScalar(0.004 * (1 - 0.5 * splash));
       dummy.updateMatrix();
-      mesh.setMatrixAt(index, dummy.matrix);
+      mesh.setMatrixAt(i, dummy.matrix);
     });
-
     mesh.instanceMatrix.needsUpdate = true;
   });
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, seeds.length]}>
-      <boxGeometry args={[1, 1, 1]} />
+    <instancedMesh ref={meshRef} args={[undefined, undefined, COUNT]} raycast={() => {}}>
+      <sphereGeometry args={[1, 6, 4]} />
       <meshStandardMaterial
-        color="#78dbff"
+        color="#9fdcf5"
         emissive="#1c7dd8"
-        emissiveIntensity={0.35}
+        emissiveIntensity={0.25}
         transparent
-        opacity={0.58}
-        roughness={0.16}
-        metalness={0.04}
+        opacity={0.6}
+        roughness={0.1}
       />
     </instancedMesh>
   );

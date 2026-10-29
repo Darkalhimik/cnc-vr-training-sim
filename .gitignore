@@ -9,3 +9,7 @@ yarn-error.log*
 tsconfig.tsbuildinfo
 
 certificates
+!.env.example
+.next-*
+tools/cad/.venv/
+assets/cad/haas-*/

@@ -6,6 +6,9 @@ interface SegmentedControlProps<T extends string> {
   options: { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  /** Span the container, segments sharing the width evenly — for a panel
+   *  column, where a centred inline control leaves dead space beside it. */
+  fill?: boolean;
   className?: string;
 }
 
@@ -13,12 +16,14 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  fill,
   className,
 }: SegmentedControlProps<T>) {
   return (
     <div
       className={cn(
-        "inline-flex rounded-[var(--radius-md)] border border-border bg-bg-secondary p-1",
+        "h-7 items-center justify-center rounded-md bg-muted p-0.5",
+        fill ? "flex w-full" : "inline-flex",
         className,
       )}
     >
@@ -28,10 +33,11 @@ export function SegmentedControl<T extends string>({
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            "rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-semibold tracking-[0.08em] transition-colors duration-150",
+            "rounded-sm px-3 py-1 text-xs font-medium transition-colors",
+            fill && "min-w-0 flex-1",
             value === opt.value
-              ? "bg-bg-elevated text-text-primary"
-              : "text-text-secondary hover:text-text-primary",
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {opt.label}

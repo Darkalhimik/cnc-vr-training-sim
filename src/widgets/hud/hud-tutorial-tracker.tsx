@@ -1,113 +1,140 @@
 "use client";
 
-import { GlassPanel } from "@/shared/ui/glass-panel";
 import { Button } from "@/shared/ui/button";
 import {
   useCurrentPhase,
   useCurrentStep,
+  useTutorialSteps,
   useTutorialStore,
 } from "@/features/tutorial/tutorial-store";
-import { cncTutorialSteps } from "@/features/cnc-tutorial/steps";
+import { instructionOf } from "@/features/cnc-tutorial/tutorial-types";
+import { useMachineStore } from "@/entities/machine/machine-store";
+import { useLevelSession } from "@/features/levels/level-session";
+import { TUTORIALS } from "@/features/levels/tutorials";
+import { LevelComplete } from "@/features/levels/ui/level-complete";
+import { useSessionStore } from "@/features/session/session-store";
 import { cn } from "@/shared/lib/cn";
+import { TONE_CLASSES, TONE_TEXT, toneOf } from "@/shared/ui/tone";
 
-export function HudTutorialTracker() {
-  const stepIndex = useTutorialStore((s) => s.stepIndex);
-  const phaseIndex = useTutorialStore((s) => s.phaseIndex);
-  const status = useTutorialStore((s) => s.status);
-  const celebrationDismissed = useTutorialStore((s) => s.celebrationDismissed);
-  const reset = useTutorialStore((s) => s.reset);
-  const dismiss = useTutorialStore((s) => s.dismissCelebration);
+/** done / active / pending — the same three states the 3D tracker uses. */
+function stepState(index: number, stepIndex: number) {
+  if (index < stepIndex) return "done";
+  if (index === stepIndex) return "active";
+  return "pending";
+}
 
-  const currentStep = useCurrentStep();
-  const currentPhase = useCurrentPhase();
-
-  if (status === "complete" && !celebrationDismissed) {
-    return (
-      <GlassPanel className="flex max-w-sm flex-col gap-4 p-6">
-        <h3 className="text-xl font-bold text-accent">Machine Ready!</h3>
-        <p className="text-sm text-text-secondary">
-          You have successfully completed the startup sequence for the HAAS UMC-500.
-        </p>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={reset}>
-            Restart Tutorial
-          </Button>
-          <Button size="sm" variant="secondary" onClick={dismiss}>
-            Continue
-          </Button>
-        </div>
-      </GlassPanel>
-    );
-  }
-
-  if (status === "complete") return null;
-  if (!currentStep || !currentPhase) return null;
-
-  const totalPhases = currentStep.phases.length;
-
+function ProgressRail({ stepIndex }: { stepIndex: number }) {
+  const steps = useTutorialSteps();
   return (
-    <GlassPanel className="flex max-w-md flex-col gap-4 p-4">
-      {/* Step indicator */}
-      <div className="flex items-center gap-1.5">
-        {cncTutorialSteps.map((step, i) => (
-          <div key={step.id} className="flex items-center">
+    <ol
+      className="grid gap-0.5"
+      style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+    >
+      {steps.map((step, i) => {
+        const state = stepState(i, stepIndex);
+        return (
+          <li key={step.id} className="flex min-w-0 flex-col items-center gap-1">
             <div
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
-                i < stepIndex
-                  ? "bg-accent text-white shadow-[0_0_8px_var(--color-accent-glow)]"
-                  : i === stepIndex
-                    ? "border-2 border-cyan bg-cyan/20 text-cyan shadow-[0_0_12px_var(--color-cyan-glow)]"
-                    : "border border-border bg-bg-elevated text-text-muted",
+                "flex h-6 w-6 items-center justify-center rounded-full font-mono text-[10px] tabular-nums ring-1 ring-inset",
+                state === "pending"
+                  ? "bg-muted text-muted-foreground ring-transparent"
+                  : TONE_CLASSES[toneOf(state)],
               )}
             >
-              {i < stepIndex ? "✓" : i + 1}
+              {i + 1}
             </div>
-            {i < cncTutorialSteps.length - 1 && (
-              <div
-                className={cn(
-                  "mx-0.5 h-0.5 w-6 rounded-full transition-colors duration-300",
-                  i < stepIndex ? "bg-accent" : "bg-border",
-                )}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Labels under indicator */}
-      <div className="flex items-center">
-        {cncTutorialSteps.map((step, i) => (
-          <div key={step.id} className="flex items-center">
             <span
               className={cn(
-                "w-7 text-center text-[9px] font-semibold uppercase",
-                i < stepIndex ? "text-accent" : i === stepIndex ? "text-cyan" : "text-text-muted",
+                "max-w-full truncate text-[9px] tracking-tight",
+                state === "pending" ? "text-muted-foreground" : TONE_TEXT[toneOf(state)],
               )}
             >
               {step.shortLabel}
             </span>
-            {i < cncTutorialSteps.length - 1 && <div className="mx-0.5 w-6" />}
-          </div>
-        ))}
-      </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-      {/* Current instruction */}
-      <div className="flex flex-col gap-2">
-        <h4 className="text-sm font-bold text-text-primary">
+/**
+ * Section body, not a card. The rail always renders at the same height and the
+ * instruction block sits below it, so advancing a step never resizes the panel
+ * around the pointer.
+ */
+export function HudTutorialTracker() {
+  const stepIndex = useTutorialStore((s) => s.stepIndex);
+  const phaseIndex = useTutorialStore((s) => s.phaseIndex);
+  const status = useTutorialStore((s) => s.status);
+  const deviceMode = useSessionStore((s) => s.deviceMode);
+  const focusCamera = useSessionStore((s) => s.focusCamera);
+  const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
+  const level = useLevelSession((s) => s.level);
+  const restart = useLevelSession((s) => s.restart);
+  // Live instructions ("Z is at -42.000") re-read the machine as it moves.
+  const machine = useMachineStore((s) => s.machine);
+
+  const currentStep = useCurrentStep();
+  const currentPhase = useCurrentPhase();
+
+  if (status === "complete") {
+    return (
+      <div className="space-y-3">
+        <ProgressRail stepIndex={stepIndex} />
+        <LevelComplete outro={level ? TUTORIALS[level.id]?.outro : undefined} />
+      </div>
+    );
+  }
+
+  if (!currentStep || !currentPhase) return null;
+
+  const totalPhases = currentStep.phases.length;
+  const keys = currentPhase.keys ?? [];
+
+  return (
+    <div className="space-y-3">
+      <ProgressRail stepIndex={stepIndex} />
+
+      <div className="space-y-1">
+        <h4 className="text-sm font-semibold tracking-tight">
           Step {stepIndex + 1}: {currentStep.title}
           {totalPhases > 1 && (
-            <span className="ml-2 text-text-muted">
-              ({phaseIndex + 1}/{totalPhases})
+            <span className="ml-2 font-mono text-xs font-normal tabular-nums text-muted-foreground">
+              {phaseIndex + 1}/{totalPhases}
             </span>
           )}
         </h4>
-        <p className="text-xs leading-relaxed text-text-secondary">{currentPhase.instruction}</p>
+        <p className="text-xs/relaxed text-muted-foreground">{instructionOf(currentPhase, machine)}</p>
+        {keys.length > 0 && (
+          <p className="flex flex-wrap items-center gap-1 pt-1">
+            {keys.map((k) => (
+              <kbd key={k} className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                {k.replace(/_/g, " ")}
+              </kbd>
+            ))}
+            <span className="text-[11px] text-muted-foreground">on the full panel</span>
+          </p>
+        )}
       </div>
 
-      <Button size="sm" variant="ghost" onClick={reset}>
-        Reset
-      </Button>
-    </GlassPanel>
+      <div className="flex items-center gap-2">
+        {deviceMode === "desktop" && currentPhase.highlight.length > 0 && (
+          <Button size="md" onClick={() => focusCamera(currentPhase.highlight[0])}>
+            Show me
+          </Button>
+        )}
+        {keys.length > 0 && !fullPanelOpen && (
+          <Button size="md" onClick={() => setFullPanelOpen(true)}>
+            Open full panel
+          </Button>
+        )}
+        <Button size="md" variant="secondary" onClick={restart}>
+          Restart
+        </Button>
+      </div>
+    </div>
   );
 }

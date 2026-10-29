@@ -1,29 +1,25 @@
 "use client";
 
 import { cn } from "@/shared/lib/cn";
-
-type BadgeVariant = "default" | "active" | "completed" | "locked" | "warning";
+import { TONE_CLASSES, type Tone } from "@/shared/ui/tone";
 
 interface BadgeProps {
-  variant?: BadgeVariant;
+  /** State pill (default): mono text, tone fill. */
+  tone?: Tone;
+  /** A qualifier — a tag or category, not a state. Neutral by definition. */
+  qualifier?: boolean;
   children: React.ReactNode;
   className?: string;
 }
 
-const variantStyles: Record<BadgeVariant, string> = {
-  default: "border-border bg-bg-elevated text-text-secondary",
-  active: "border-accent/25 bg-accent/10 text-accent",
-  completed: "border-accent/25 bg-accent/10 text-accent",
-  locked: "border-border bg-bg-secondary text-text-muted",
-  warning: "border-warning/25 bg-warning/10 text-warning",
-};
-
-export function Badge({ variant = "default", children, className }: BadgeProps) {
+export function Badge({ tone = "zinc", qualifier, children, className }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-[var(--radius-full)] border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
-        variantStyles[variant],
+        "inline-flex items-center rounded-md px-2 py-0.5",
+        qualifier
+          ? "bg-muted text-[10px] uppercase tracking-wide text-muted-foreground"
+          : cn("font-mono text-xs ring-1 ring-inset", TONE_CLASSES[tone]),
         className,
       )}
     >

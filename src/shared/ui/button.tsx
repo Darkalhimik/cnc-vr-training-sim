@@ -11,21 +11,20 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
 }
 
+// Variant carries colour, size carries the box. Density is the point: `md` is
+// the base control at h-7/text-xs, `sm` steps down for a HUD row, and `lg` is
+// reserved for the one primary action that drives a page forward.
 const variantStyles: Record<ButtonVariant, string> = {
-  primary:
-    "border border-accent/40 bg-accent text-white hover:border-accent/60 hover:bg-accent-hover",
-  secondary:
-    "border border-border bg-bg-secondary text-text-primary hover:bg-bg-elevated hover:border-border/80",
-  ghost:
-    "border border-transparent bg-transparent text-text-secondary hover:border-border hover:bg-bg-elevated/50 hover:text-text-primary",
-  danger:
-    "border border-danger/30 bg-danger/8 text-danger hover:bg-danger/14",
+  primary: "bg-primary text-primary-foreground hover:opacity-90",
+  secondary: "border bg-transparent hover:bg-accent",
+  ghost: "border border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+  danger: "bg-destructive text-destructive-foreground hover:opacity-90",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 text-sm rounded-[var(--radius-sm)]",
-  md: "px-4 py-2.5 text-sm rounded-[var(--radius-md)]",
-  lg: "px-5 py-3 text-sm rounded-[var(--radius-md)]",
+  sm: "h-6 gap-1.5 px-2 text-xs",
+  md: "h-7 gap-2 px-3 text-xs",
+  lg: "h-9 gap-2 px-4 text-sm",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -35,8 +34,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled}
         className={cn(
-          "inline-flex items-center justify-center font-semibold tracking-[0.02em] transition-colors duration-150",
-          "disabled:pointer-events-none disabled:opacity-40",
+          "inline-flex shrink-0 items-center justify-center rounded-md font-medium whitespace-nowrap",
+          "transition-colors disabled:pointer-events-none disabled:opacity-50",
           variantStyles[variant],
           sizeStyles[size],
           className,

@@ -1,50 +1,29 @@
 "use client";
 
-import { GlassPanel } from "@/shared/ui/glass-panel";
+import { Badge } from "@/shared/ui/badge";
+import { toneOf } from "@/shared/ui/tone";
 import { useMachineStore } from "@/entities/machine/machine-store";
-import { cn } from "@/shared/lib/cn";
+import { machineIndicators } from "@/entities/machine/machine-indicators";
 
-type Indicator = {
-  label: string;
-  active: boolean;
-  activeLabel: string;
-  inactiveLabel: string;
-};
-
+/**
+ * Section body, not a card — it is composed into the side panel, which owns the
+ * surface. One row per indicator, in the same order as the in-scene VR board so
+ * the two can be read interchangeably.
+ */
 export function HudMachineStatus() {
   const machine = useMachineStore((s) => s.machine);
-
-  const indicators: Indicator[] = [
-    { label: "AIR", active: machine.airValveOpen, activeLabel: "ON", inactiveLabel: "OFF" },
-    { label: "PWR", active: machine.powerOn, activeLabel: "ON", inactiveLabel: "OFF" },
-    { label: "E-STOP", active: machine.estop === "released", activeLabel: "FREE", inactiveLabel: "LOCK" },
-    { label: "DOOR", active: !machine.doorOpen, activeLabel: "SHUT", inactiveLabel: "OPEN" },
-    { label: "COOL", active: machine.coolantOn, activeLabel: "ON", inactiveLabel: "OFF" },
-  ];
+  const indicators = machineIndicators(machine);
 
   return (
-    <GlassPanel className="flex items-center gap-4 px-4 py-2.5">
+    <dl className="grid gap-1.5">
       {indicators.map((ind) => (
-        <div key={ind.label} className="flex items-center gap-2">
-          <div
-            className={cn(
-              "h-2 w-2 rounded-full transition-colors duration-300",
-              ind.active ? "bg-accent shadow-[0_0_6px_var(--color-accent-glow)]" : "bg-danger/60",
-            )}
-          />
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-              {ind.label}
-            </span>
-            <span className={cn(
-              "font-mono text-xs font-semibold",
-              ind.active ? "text-accent" : "text-text-muted",
-            )}>
-              {ind.active ? ind.activeLabel : ind.inactiveLabel}
-            </span>
-          </div>
+        <div key={ind.label} className="flex items-center justify-between gap-3">
+          <dt className="text-xs text-muted-foreground">{ind.label}</dt>
+          <dd>
+            <Badge tone={toneOf(ind.state)}>{ind.state}</Badge>
+          </dd>
         </div>
       ))}
-    </GlassPanel>
+    </dl>
   );
 }
