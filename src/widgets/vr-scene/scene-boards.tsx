@@ -35,34 +35,103 @@ const STATUS_BOARD = { position: [2.3, 2.05, 1.45], yaw: -0.75, abovePendantY: 2
 const VIEW_LECTERN = { position: [-1.25, 1.08, 2.05], yaw: 0.9, tilt: -0.55 } as const;
 const WARNING_BOARD = { position: [0, 2.35, 1.7] } as const;
 
-export function SceneBoards({ gameMode, showView = true }: { gameMode: GameMode; showView?: boolean }) {
+type Placed = { position: [number, number, number]; yaw: number };
+
+/** Turned about +Y so its face (+z) looks at the trainee's spot. */
+const facing = (x: number, y: number, z: number, stand: [number, number]): Placed => ({
+  position: [x, y, z],
+  yaw: Math.atan2(stand[0] - x, stand[1] - z),
+});
+
+/**
+ * The same boards for a trainee standing closer — AR, 1.85 m from the
+ * machine's centre (layout.ts AR_STAND): the side columns come forward to
+ * stay in view, the lectern to the left hand, the warning a little lower;
+ * each turned to the trainee's spot.
+ */
+function placedFor(stand: [number, number]) {
+  const z = stand[1] - 1.55;
+  return {
+    mode: facing(MODE_BOARD.position[0], MODE_BOARD.position[1], z, stand),
+    status: facing(STATUS_BOARD.position[0], STATUS_BOARD.position[1], z, stand),
+    lectern: facing(stand[0] - 1.05, VIEW_LECTERN.position[1], stand[1] - 0.3, stand),
+    warning: facing(0, 2.1, stand[1] - 0.95, stand),
+  };
+}
+
+/** Lowest a board comes down to beside a machine made small, m. */
+const LOWEST_READING_Y = 1.25;
+
+/**
+ * A board beside a machine sized `scale` times: the same board — never
+ * scaled, so it stays readable — drawn in towards the machine (or out from
+ * it) in proportion, so it is not left metres away from a tabletop model.
+ * It comes down with the machine too, but not below reading height; it does
+ * not go up past where it hangs at full size. Its turn is unchanged: scaling
+ * both it and the trainee's spot keeps the direction between them.
+ */
+function nearMachine(placed: Placed, scale: number): Placed {
+  if (scale === 1) return placed;
+  const [x, y, z] = placed.position;
+  const lowest = Math.min(y, LOWEST_READING_Y);
+  return { position: [x * scale, Math.min(y, Math.max(y * scale, lowest)), z * scale], yaw: placed.yaw };
+}
+
+const PLACED_FOR_THE_BAY = {
+  mode: { position: [...MODE_BOARD.position], yaw: MODE_BOARD.yaw },
+  status: { position: [...STATUS_BOARD.position], yaw: STATUS_BOARD.yaw },
+  lectern: { position: [...VIEW_LECTERN.position], yaw: VIEW_LECTERN.yaw },
+  warning: { position: [...WARNING_BOARD.position], yaw: 0 },
+} as Record<"mode" | "status" | "lectern" | "warning", Placed>;
+
+export function SceneBoards({
+  gameMode,
+  showView = true,
+  stand,
+  scale = 1,
+}: {
+  gameMode: GameMode;
+  showView?: boolean;
+  /** Where the trainee stands, in the machine's frame, when not 2.6 m out. */
+  stand?: [number, number];
+  /** How big the machine is drawn (AR): the boards keep their size and
+   *  come in towards it, or go out, in proportion. */
+  scale?: number;
+}) {
   const machineScale = useSessionStore((s) => s.machineScale);
   const setMachineScale = useSessionStore((s) => s.setMachineScale);
   const turnMachine = useSessionStore((s) => s.turnMachine);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
-  const [sx, sy, sz] = STATUS_BOARD.position;
+  const atFullSize = stand ? placedFor(stand) : PLACED_FOR_THE_BAY;
+  const placed = {
+    mode: nearMachine(atFullSize.mode, scale),
+    status: nearMachine(atFullSize.status, scale),
+    lectern: nearMachine(atFullSize.lectern, scale),
+    warning: nearMachine(atFullSize.warning, scale),
+  };
+  const [sx, sy, sz] = placed.status.position;
 
   return (
     <>
-      <group position={[...MODE_BOARD.position]} rotation={[0, MODE_BOARD.yaw, 0]}>
+      <group position={placed.mode.position} rotation={[0, placed.mode.yaw, 0]}>
         {gameMode === "tutorial" && <TutorialTracker3D />}
         {gameMode === "task" && <TaskBoard3D />}
         {gameMode === "freeplay" && <JobBoard3D />}
       </group>
 
-      <group position={[sx, fullPanelOpen ? STATUS_BOARD.abovePendantY : sy, sz]} rotation={[0, STATUS_BOARD.yaw, 0]}>
+      <group position={[sx, fullPanelOpen ? STATUS_BOARD.abovePendantY : sy, sz]} rotation={[0, placed.status.yaw, 0]}>
         <StatusBoard3D />
       </group>
 
-      {showView && (
-        <group position={[...VIEW_LECTERN.position]} rotation={[0, VIEW_LECTERN.yaw, 0]}>
-          <group rotation={[VIEW_LECTERN.tilt, 0, 0]}>
-            <SizePanel3D value={machineScale} onChange={setMachineScale} onTurn={turnMachine} />
-          </group>
+      {/* In every immersive mode: the full panel and the program speed; the
+          size and the turn only where the machine can be sized (showView). */}
+      <group position={placed.lectern.position} rotation={[0, placed.lectern.yaw, 0]}>
+        <group rotation={[VIEW_LECTERN.tilt, 0, 0]}>
+          <SizePanel3D value={machineScale} onChange={setMachineScale} onTurn={turnMachine} adjustable={showView} />
         </group>
-      )}
+      </group>
 
-      <group position={[...WARNING_BOARD.position]}>
+      <group position={placed.warning.position} rotation={[0, placed.warning.yaw, 0]}>
         <WarningBoard3D />
       </group>
     </>

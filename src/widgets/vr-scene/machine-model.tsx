@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { createPortal, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import { DRACO_DECODER } from "@/shared/lib/draco";
+import { isDragClick } from "@/shared/lib/pointer";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { CoolantStream } from "./coolant-voxels";
 import { GuideArrows } from "./arrows";
@@ -60,6 +61,7 @@ export function MachineModel({ interactive, highlightedParts, hoveredPart, onPar
     const part = partOf(event.object);
     if (!part) return;
     event.stopPropagation();
+    if (isDragClick(event)) return;
     const sign = part === "handwheel" ? handwheelSign(rig, event.point) : undefined;
     pressRig(rig, part, sign);
     onPartInteract(part, sign);

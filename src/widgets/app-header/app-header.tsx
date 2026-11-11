@@ -24,11 +24,13 @@ function AccountMenu() {
     return (
       <div className="flex items-center gap-2">
         {user?.isAnonymous && (
-          <span className="hidden text-xs text-muted-foreground sm:inline">Guest — sign up to keep progress</span>
+          <span className="hidden whitespace-nowrap text-xs text-muted-foreground xl:inline">
+            Guest — sign up to keep progress
+          </span>
         )}
         <Link
           href="/sign-in"
-          className="inline-flex h-7 items-center rounded-md border px-3 text-xs font-medium transition-colors hover:bg-accent"
+          className="inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-md border px-3 text-xs font-medium transition-colors hover:bg-accent"
         >
           Sign in
         </Link>
@@ -37,7 +39,7 @@ function AccountMenu() {
   }
   return (
     <div className="flex items-center gap-2">
-      <span className="max-w-40 truncate text-xs">{user.name}</span>
+      <span className="max-w-24 truncate text-xs sm:max-w-40">{user.name}</span>
       <button
         type="button"
         onClick={async () => {
@@ -63,11 +65,12 @@ export function AppHeader({ crumbs = [] }: { crumbs?: Crumb[] }) {
   return (
     <nav className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
       <div className="mx-auto flex h-12 w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <Link href="/" className="font-mono text-xs font-medium tracking-tight">
+        <Link href="/" className="shrink-0 whitespace-nowrap font-mono text-xs font-medium tracking-tight">
           CNC·TRAINER
         </Link>
-        <span className="h-4 w-px bg-border" />
-        <ol className="flex min-w-0 items-center gap-1.5 text-xs">
+        {/* No room for the trail on a phone: the page's own title says where you are. */}
+        <span className="h-4 w-px bg-border max-sm:hidden" />
+        <ol className="flex min-w-0 items-center gap-1.5 text-xs max-sm:hidden">
           {trail.map((c, i) => (
             <Fragment key={c.label}>
               {i > 0 && <li className="text-muted-foreground/60">/</li>}
@@ -84,26 +87,28 @@ export function AppHeader({ crumbs = [] }: { crumbs?: Crumb[] }) {
           ))}
         </ol>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Link
             href="/warehouse"
+            aria-label="Warehouse"
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-accent",
+              "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs transition-colors hover:bg-accent",
               pathname.startsWith("/warehouse") ? "bg-accent" : "text-muted-foreground hover:text-foreground",
             )}
           >
             <ShelfIcon />
-            Warehouse
+            <span className="max-md:hidden">Warehouse</span>
           </Link>
           <Link
             href="/toolbox"
+            aria-label="Toolbox"
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors hover:bg-accent",
+              "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs transition-colors hover:bg-accent",
               pathname.startsWith("/toolbox") ? "bg-accent" : "text-muted-foreground hover:text-foreground",
             )}
           >
             <ToolIcon />
-            Toolbox
+            <span className="max-md:hidden">Toolbox</span>
           </Link>
           <AccountMenu />
           <ThemeToggle className="hidden sm:inline-flex" />

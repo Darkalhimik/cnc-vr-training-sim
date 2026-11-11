@@ -26,6 +26,8 @@ import {
   initialMachineState,
   spindleRpm,
 } from "./machine-types";
+import { idealWorkOffset } from "@/entities/part/setup";
+import { toolByNumber } from "@/entities/part/tool-library";
 import type { Halt } from "./program-playback";
 import { afterSwap } from "./tool-changer";
 
@@ -454,6 +456,13 @@ export const TOOL_ROWS = 20;
 
 export const sortedPrograms = (s: MachineState) => Object.keys(s.programs).sort();
 
+/** The files on the device tab LIST PROGRAM shows, in its order. */
+export const listFiles = (s: MachineState) =>
+  s.listDevice === "usb" ? Object.keys(s.usb ?? {}).sort() : sortedPrograms(s);
+
+/** The row of the active program on the device shown, or the top. */
+const listRow = (s: MachineState) => Math.max(0, listFiles(s).indexOf(s.activeProgram));
+
 /** The NGC keyboard. Keys that are also machine parts route through here too. */
 function key(state: MachineState, id: string, shift = false): Outcome {
   if (state.control !== "on") {
@@ -473,10 +482,7 @@ function key(state: MachineState, id: string, shift = false): Outcome {
       mode,
       display: mode === "list" ? "list" : mode === "mdi" || mode === "edit" ? "program" : state.display,
       jogAxis: mode === "jog" ? state.jogAxis : null,
-      offsetCursor:
-        mode === "list"
-          ? { row: Math.max(0, sortedPrograms(state).indexOf(state.activeProgram)), col: 0 }
-          : state.offsetCursor,
+      offsetCursor: mode === "list" ? { row: listRow(state), col: 0 } : state.offsetCursor,
     });
   }
 
@@ -597,7 +603,13 @@ function key(state: MachineState, id: string, shift = false): Outcome {
     }
 
     case "TOOL_OFFSET_MEASURE": {
-      if (state.mode !== "jog") return no(state, "Jog the tool to the surface in HANDLE JOG, then press TOOL OFFSET MEASURE.");
+      if (state.mode === "mdi") return wipsToolSetter(state);
+      if (state.mode !== "jog") {
+        return no(
+          state,
+          "TOOL OFFSET MEASURE: in HANDLE JOG it takes the touch-off position; in MDI it sets up the WIPS tool setter.",
+        );
+      }
       const t = state.toolInSpindle;
       if (!t) return no(state, "There is no tool in the spindle.");
       // Setting 64 OFF: the length offset is the machine Z where the tip
@@ -651,6 +663,16 @@ function key(state: MachineState, id: string, shift = false): Outcome {
       }
       return ok(state);
 
+    case "F2":
+      // LIST PROGRAM: copy the highlighted file to the other device.
+      if (state.display === "list") return copyFile(state);
+      break;
+
+    case "F3":
+      // OFFSET → WORK: the WIPS probing action for the highlighted offset.
+      if (state.display === "offset" && state.offsetTab === "work") return wipsWorkProbe(state);
+      break;
+
     case "UP":
     case "DOWN":
     case "LEFT":
@@ -662,9 +684,27 @@ function key(state: MachineState, id: string, shift = false): Outcome {
     case "SELECT_PROGRAM":
     case "FORWARD": {
       if (state.mode !== "list") return no(state, "Select LIST PROGRAM first.");
-      const name = sortedPrograms(state)[state.offsetCursor.row];
+      const name = listFiles(state)[state.offsetCursor.row];
       if (!name) return ok(state);
       if (running(state)) return no(state, "A program is active. Press RESET first.");
+      if (state.listDevice === "usb") {
+        // The NGC can run a program straight off the stick; here a selected
+        // file is copied into memory too, so pulling the stick cannot lose it.
+        const text = state.usb?.[name];
+        if (text === undefined) return ok(state);
+        const replaced = state.programs[name] !== undefined && state.programs[name] !== text;
+        return ok(
+          {
+            ...state,
+            programs: { ...state.programs, [name]: text },
+            activeProgram: name,
+            mode: "memory",
+            display: "program",
+            listDevice: "memory",
+          },
+          { notice: `${name} copied from USB to memory${replaced ? ", replacing the old one," : ""} and selected.` },
+        );
+      }
       return ok({ ...state, activeProgram: name, mode: "memory", display: "program" }, { notice: `${name} is the active program.` });
     }
     case "BACK":
@@ -723,6 +763,72 @@ function enter(state: MachineState, replace: boolean): Outcome {
   });
 }
 
+/** LIST PROGRAM F2: the highlighted file copied to the other device. */
+function copyFile(state: MachineState): Outcome {
+  const name = listFiles(state)[state.offsetCursor.row];
+  if (!name) return ok(state);
+  if (state.listDevice === "usb") {
+    const text = state.usb?.[name];
+    if (text === undefined) return ok(state);
+    return ok({ ...state, programs: { ...state.programs, [name]: text } }, { notice: `${name} copied to memory.` });
+  }
+  if (!state.usb) return no(state, "No USB device: the port beside the screen is empty.");
+  return ok({ ...state, usb: { ...state.usb, [name]: state.programs[name] } }, { notice: `${name} copied to USB.` });
+}
+
+const mm3 = (n: number) => n.toFixed(3);
+
+/**
+ * TOOL OFFSET MEASURE in MDI with WIPS (operation.md §7.3): the tool-setter
+ * routine for the tool in the spindle goes into MDI, and CYCLE START runs it.
+ * The table probe finds the tool's gauge-line length — here, the length of
+ * the tool as it was built in the crib — and the routine writes it to Length
+ * Geometry. Length only (probe type 1).
+ */
+function wipsToolSetter(state: MachineState): Outcome {
+  if (running(state)) return no(state, "A program is active. Press RESET first.");
+  const t = state.toolInSpindle;
+  if (!t) return no(state, "There is no tool in the spindle.");
+  const tool = toolByNumber(t);
+  if (!tool) return no(state, `T${t} is not in the tool table the setter knows.`);
+  const mdi = [
+    `(WIPS TOOL SETTER - T${t} LENGTH)`,
+    "G00 G90 G53 Z0.",
+    "G04 P1.5 (PROBING)",
+    `G10 L10 P${t} R${mm3(tool.length)}`,
+  ].join("\n");
+  return ok(
+    { ...state, mdi, input: "", display: "offset", offsetTab: "tool", offsetCursor: { row: t - 1, col: 0 } },
+    { notice: `WIPS tool setter for T${t} is in MDI. Press CYCLE START to measure it.` },
+  );
+}
+
+/**
+ * F3 on OFFSET → WORK with WIPS (operation.md §7.4): the spindle-probe
+ * routine for the highlighted offset goes into MDI, and CYCLE START runs it.
+ * It levels the table, goes over the blank and finds its top-face centre —
+ * here, where the clamped blank really is — then writes the offset. The
+ * probe itself is not modelled: any tool in the spindle stands in for it.
+ */
+function wipsWorkProbe(state: MachineState): Outcome {
+  if (running(state)) return no(state, "A program is active. Press RESET first.");
+  if (!state.stock) return no(state, "Nothing in the vise to probe: clamp a blank first.");
+  const id = WORK_OFFSET_IDS[state.offsetCursor.row];
+  const [x, y, z] = state.stock.size;
+  const found = idealWorkOffset({ x, y, z, material: state.stock.material });
+  const mdi = [
+    `(WIPS WORK PROBE - ${id} AT THE TOP-FACE CENTRE)`,
+    "G00 G90 G53 Z0.",
+    "G53 B0. C0.",
+    `G53 X${mm3(found.x)} Y${mm3(found.y)}`,
+    "G04 P1.5 (PROBING)",
+    `G10 L2 P${Number(id.slice(1)) - 53} X${mm3(found.x)} Y${mm3(found.y)} Z${mm3(found.z)} B0. C0.`,
+  ].join("\n");
+  return ok({ ...state, mode: "mdi", mdi, input: "" }, {
+    notice: `WIPS probing of ${id} is in MDI. Shut the door and press CYCLE START.`,
+  });
+}
+
 function mdiInsert(state: MachineState): Outcome {
   const line = state.input.trim().replace(/;$/, "");
   if (!line) return ok(state);
@@ -734,8 +840,15 @@ function cursor(state: MachineState, id: string): Outcome {
   const step = id === "PAGE_UP" ? -10 : id === "PAGE_DOWN" ? 10 : id === "UP" ? -1 : id === "DOWN" ? 1 : 0;
   const dCol = id === "LEFT" ? -1 : id === "RIGHT" ? 1 : 0;
   if (state.display === "list") {
-    const n = sortedPrograms(state).length;
-    return ok({ ...state, offsetCursor: { row: Math.min(n - 1, Math.max(0, row + step)), col: 0 } });
+    // LEFT and RIGHT move between the device tabs: Memory, USB.
+    if (dCol) {
+      const listDevice = dCol > 0 ? "usb" : "memory";
+      if (listDevice === "usb" && !state.usb) return no(state, "No USB device: the port beside the screen is empty.");
+      const next = { ...state, listDevice } as const;
+      return ok({ ...next, offsetCursor: { row: listRow(next), col: 0 } });
+    }
+    const n = listFiles(state).length;
+    return ok({ ...state, offsetCursor: { row: Math.max(0, Math.min(n - 1, row + step)), col: 0 } });
   }
   if (state.display !== "offset") return ok(state);
   const rows = state.offsetTab === "tool" ? TOOL_ROWS : WORK_OFFSET_IDS.length;

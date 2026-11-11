@@ -22,7 +22,8 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       className={cn(
-        "h-7 items-center justify-center rounded-md bg-muted p-0.5",
+        // min-h, not h: on a touch screen the segments grow to a finger's size.
+        "min-h-7 items-stretch justify-center rounded-md bg-muted p-0.5",
         fill ? "flex w-full" : "inline-flex",
         className,
       )}

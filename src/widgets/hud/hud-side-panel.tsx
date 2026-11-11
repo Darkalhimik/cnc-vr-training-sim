@@ -9,6 +9,8 @@ import { ThemeToggle } from "@/widgets/theme-toggle/theme-toggle";
 import {
   MACHINE_SCALE_MAX,
   MACHINE_SCALE_MIN,
+  SIM_SPEEDS,
+  type SimSpeed,
   useSessionStore,
 } from "@/features/session/session-store";
 import { FreePlayOverlay } from "@/features/free-play/ui/freeplay-overlay";
@@ -17,8 +19,9 @@ import { useLevelSession } from "@/features/levels/level-session";
 import { TaskPanel } from "@/features/levels/ui/task-panel";
 import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
+import { ImmersiveLaunch } from "@/widgets/hud/immersive-launch";
 import type { MachineInfo } from "@/entities/catalog/machines";
-import { DEVICE_LABEL, isImmersive as immersive, type DeviceMode, type GameMode } from "@/entities/machine/machine-types";
+import { DEVICE_MODES, DEVICE_SHORT, type DeviceMode, type GameMode } from "@/entities/machine/machine-types";
 
 const GAME_MODE_TITLE: Record<GameMode, string> = {
   freeplay: "Free play",
@@ -26,12 +29,7 @@ const GAME_MODE_TITLE: Record<GameMode, string> = {
   task: "Task",
 };
 
-const deviceModeOptions: { value: DeviceMode; label: string }[] = [
-  { value: "desktop", label: "Desktop" },
-  { value: "vr", label: "VR" },
-  { value: "glasses", label: "Glasses" },
-  { value: "phone", label: "Phone" },
-];
+const deviceModeOptions = DEVICE_MODES.map((value) => ({ value, label: DEVICE_SHORT[value] }));
 
 /** One titled block of the panel. The panel owns the surface, so a section is
  *  a heading plus its body — never a card of its own. */
@@ -72,6 +70,9 @@ interface HudSidePanelProps {
   /** The machine can be sized and turned — not where it stands in a bay. */
   adjustable: boolean;
   className?: string;
+  /** Sections that come first: in AR, the menu that stands in for the
+   *  workshop (which machine, its tool cart, movement). */
+  children?: React.ReactNode;
 }
 
 /**
@@ -92,6 +93,7 @@ export function HudSidePanel({
   back,
   adjustable,
   className,
+  children,
 }: HudSidePanelProps) {
   const router = useRouter();
   const search = useSearchParams();
@@ -102,8 +104,9 @@ export function HudSidePanel({
   const turnMachine = useSessionStore((s) => s.turnMachine);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
+  const simSpeed = useSessionStore((s) => s.simSpeed);
+  const setSimSpeed = useSessionStore((s) => s.setSimSpeed);
 
-  const isImmersive = immersive(deviceMode);
 
   return (
     <aside
@@ -146,6 +149,13 @@ export function HudSidePanel({
           fill
         />
       </section>
+
+      {/* Going in: the first thing under the mode switch, as in VR. */}
+      {deviceMode !== "desktop" && (
+        <ImmersiveLaunch device={deviceMode} onEnter={onEnterImmersive} error={xrError} sessionInfo={xrSessionInfo} />
+      )}
+
+      {children}
 
       <Section title={gameMode === "freeplay" ? "Job" : GAME_MODE_TITLE[gameMode]}>
         {levelError && !level && <p className="text-xs text-amber-700 dark:text-amber-300">{levelError}</p>}
@@ -193,6 +203,15 @@ export function HudSidePanel({
           </>
         )}
         <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Program speed</span>
+          <SegmentedControl
+            options={SIM_SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }))}
+            value={String(simSpeed)}
+            onChange={(v) => setSimSpeed(Number(v) as SimSpeed)}
+            className="ml-auto"
+          />
+        </div>
+        <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Pendant</span>
           <Button
             size="md"
@@ -205,33 +224,6 @@ export function HudSidePanel({
         </div>
       </Section>
 
-      {isImmersive && (
-        <Section title="Immersive">
-          <div className="space-y-2">
-            <Button size="lg" onClick={onEnterImmersive} className="w-full">
-              {deviceMode === "vr" ? "Enter VR" : `Start ${DEVICE_LABEL[deviceMode]}`}
-            </Button>
-
-            {xrError ? (
-              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs/relaxed text-destructive-foreground">
-                {xrError}
-              </p>
-            ) : (
-              <p className="text-xs/relaxed text-muted-foreground">
-                {deviceMode === "vr"
-                  ? "Preview mode is active. Use Enter VR on a WebXR-capable headset."
-                  : "Preview mode is active. Use Enter AR on a supported mobile device."}
-              </p>
-            )}
-
-            {xrSessionInfo && (
-              <p className="rounded-md border bg-muted/50 px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                {xrSessionInfo}
-              </p>
-            )}
-          </div>
-        </Section>
-      )}
     </aside>
   );
 }

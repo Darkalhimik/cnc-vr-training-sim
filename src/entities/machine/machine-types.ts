@@ -4,18 +4,20 @@ import { TOOL_LIBRARY } from "@/entities/part/tool-library";
 import { loadedPockets } from "./tool-changer";
 
 /**
- * How the trainee is looking: a desktop browser, a VR headset (the whole
- * workshop, walked), AR glasses (a passthrough headset: the machine in their
+ * How the trainee is looking: a desktop browser, VR glasses (the whole
+ * workshop, walked), AR glasses (passthrough: only the machine, in their
  * own room, with hands) or a phone (the machine placed in camera view).
  */
 export type DeviceMode = "desktop" | "vr" | "glasses" | "phone";
 export const DEVICE_MODES: readonly DeviceMode[] = ["desktop", "vr", "glasses", "phone"];
 export const DEVICE_LABEL: Record<DeviceMode, string> = {
   desktop: "Desktop",
-  vr: "VR headset",
+  vr: "VR glasses",
   glasses: "AR glasses",
   phone: "Phone AR",
 };
+/** The same, where a segmented control has room for a word each. */
+export const DEVICE_SHORT: Record<DeviceMode, string> = { desktop: "Desktop", vr: "VR", glasses: "AR", phone: "Phone" };
 /** Headsets and phones: the DOM is not visible, the scene carries everything. */
 export const isImmersive = (d: DeviceMode) => d !== "desktop";
 /** Passthrough: the trainee's own room is the backdrop, so no virtual one. */
@@ -59,6 +61,8 @@ export type DisplayPage =
   /** LIST PROGRAM's device manager. */
   | "list";
 export type PositionTab = "operator" | "work" | "machine" | "togo" | "all";
+/** LIST PROGRAM's device tabs that hold files here (operation.md §8.1). */
+export type ListDevice = "memory" | "usb";
 export type OffsetTab = "tool" | "work";
 
 /**
@@ -129,6 +133,11 @@ export type MachineState = {
   // Programs.
   /** Control memory: O-number → text. */
   programs: Record<string, string>;
+  /** The USB stick in the pendant's port (pendant.md): O-number → text, as
+   *  the workspace on the office PC wrote it; null with the port empty. */
+  usb: Record<string, string> | null;
+  /** The device tab LIST PROGRAM shows. */
+  listDevice: ListDevice;
   activeProgram: string;
   /** The MDI program, kept until ERASE PROGRAM. */
   mdi: string;
@@ -250,6 +259,8 @@ export const initialMachineState: MachineState = {
   optionStop: false,
   blockDelete: false,
   programs: { O09999: WARMUP_PROGRAM },
+  usb: {},
+  listDevice: "memory",
   activeProgram: "O09999",
   mdi: "",
   program: "idle",

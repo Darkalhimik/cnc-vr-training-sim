@@ -1,8 +1,11 @@
 "use client";
 
 import { useMachineStore } from "@/entities/machine/machine-store";
+import { STOCK_PRESETS, type Stock } from "@/entities/part/part-design";
 import { useJobStore } from "@/features/part-development/job-store";
 import { programName, setupSteps } from "@/features/part-development/setup";
+import { setUpAll, shortcutFor } from "@/features/part-development/setup-shortcuts";
+import { useSessionStore } from "@/features/session/session-store";
 import { showToast } from "@/shared/ui/toast";
 import { PAD, StackBoard, buttonsRow, checklistRow, textRow, type Row } from "./board-kit";
 import { MACHINES } from "@/entities/catalog/machines";
@@ -13,25 +16,54 @@ import { MODE_BOARD_W } from "./tutorial-tracker-3d";
 
 const INNER = MODE_BOARD_W - 2 * PAD;
 
+/** The shop's blank sizes, a step smaller or larger than `stock`. */
+function stepBlank(stock: Stock, step: 1 | -1): [number, number, number] | null {
+  const volume = ([x, y, z]: [number, number, number]) => x * y * z;
+  const here = volume([stock.x, stock.y, stock.z]);
+  const sorted = [...STOCK_PRESETS].sort((a, b) => volume(a) - volume(b));
+  return (step > 0 ? sorted.find((p) => volume(p) > here) : sorted.reverse().find((p) => volume(p) < here)) ?? null;
+}
+
 /**
  * Free play's job in the scene, for VR and AR where the side panel is not
- * visible: the setup checklist read off the machine, the shortcut for the
- * next step, and the warehouse once something is cut. Designing and editing
- * stay on the desktop.
+ * visible: the blank (a size the shop stocks, stepped smaller or larger),
+ * the setup checklist read off the machine with how to do the next step at
+ * the machine and a shortcut that does it ("Set up all" for the lot), the
+ * full panel, and the warehouse once something is cut. Designing and
+ * editing stay on the desktop.
  */
 export function JobBoard3D() {
   const machine = useMachineStore((s) => s.machine);
   const design = useJobStore((s) => s.design);
   const program = useJobStore((s) => s.program);
+  const updateStock = useJobStore((s) => s.updateStock);
   const nav = useBoardNavigation();
   const save = useSavePart("umc500");
+  const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
   const steps = setupSteps(machine, design, program);
   const next = steps.find((s) => !s.done);
+  const shortcut = next ? shortcutFor(next) : null;
+  const report = (refused: string | null) => {
+    if (refused) showToast(refused, "warning");
+  };
+  const smaller = stepBlank(design.stock, -1);
+  const larger = stepBlank(design.stock, 1);
+  const blankTo = (size: [number, number, number] | null) => () => {
+    if (size) updateStock({ x: size[0], y: size[1], z: size[2] });
+  };
 
   const rows: Row[] = [
     textRow(`FREE PLAY · ${MACHINES[0].name.toUpperCase()}`, "caption", INNER, { gap: 0.012 }),
     textRow(design.name, "title", INNER, { gap: 0.01 }),
-    textRow(`${programName(design)} · blank ${design.stock.x} × ${design.stock.y} × ${design.stock.z}`, "muted", INNER),
+    textRow(`${programName(design)} · blank ${design.stock.x} × ${design.stock.y} × ${design.stock.z} mm`, "muted", INNER),
+    buttonsRow(
+      [
+        { label: "Smaller blank", onPress: blankTo(smaller), disabled: !smaller },
+        { label: "Larger blank", onPress: blankTo(larger), disabled: !larger },
+      ],
+      INNER,
+    ),
     checklistRow(
       steps.map((s) => {
         const state = s.done ? "done" : s === next ? "active" : "pending";
@@ -40,20 +72,25 @@ export function JobBoard3D() {
       INNER,
     ),
     ...(next ? [textRow(next.detail, "muted", INNER, { color: PANEL.textMuted })] : []),
+    // The shortcuts: the next step done for the trainee, or all of setup.
+    ...(next
+      ? [
+          buttonsRow(
+            [
+              ...(shortcut ? [{ label: shortcut.label, variant: "primary" as const, onPress: () => report(shortcut.run()) }] : []),
+              ...(next.id !== "run" ? [{ label: "Set up all", onPress: () => report(setUpAll()) }] : []),
+            ],
+            INNER,
+          ),
+        ]
+      : []),
     buttonsRow(
       [
-        ...(next?.action
-          ? [
-              {
-                label: next.action.label,
-                variant: "primary" as const,
-                onPress: () => {
-                  const refused = next.action!.run();
-                  if (refused) showToast(refused, "warning");
-                },
-              },
-            ]
-          : []),
+        {
+          label: fullPanelOpen ? "Close full panel" : "Open full panel",
+          variant: fullPanelOpen ? ("primary" as const) : ("secondary" as const),
+          onPress: () => setFullPanelOpen(!fullPanelOpen),
+        },
         ...(save ? [save] : []),
         { label: "Level map", onPress: () => void nav.toMap() },
       ],

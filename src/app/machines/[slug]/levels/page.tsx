@@ -8,7 +8,6 @@ import { levelShortTitle, levelsFor, type LevelInfo, type LevelKind } from "@/en
 import { DEVICE_LABEL, DEVICE_MODES, type DeviceMode } from "@/entities/machine/machine-types";
 import { useProgress } from "@/features/levels/progress";
 import { cn } from "@/shared/lib/cn";
-import { Badge } from "@/shared/ui/badge";
 import { CheckIcon, LockIcon, PlayIcon, Stars, StarIcon } from "@/shared/ui/icons";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AppHeader } from "@/widgets/app-header/app-header";
@@ -53,11 +52,11 @@ function LevelNode({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className="group flex w-[4.75rem] shrink-0 flex-col items-center gap-2 text-center outline-none"
+      className="group flex items-center gap-3 text-left outline-none sm:w-16 sm:flex-col sm:gap-2 sm:text-center"
     >
       <span
         className={cn(
-          "flex size-11 items-center justify-center rounded-full font-mono text-sm transition-colors",
+          "flex size-11 shrink-0 items-center justify-center rounded-full font-mono text-sm transition-colors",
           state === "done" && "bg-foreground text-background",
           state === "next" && "border-2 border-foreground bg-background",
           state === "open" && "border bg-background",
@@ -68,7 +67,8 @@ function LevelNode({
         {state === "done" ? <CheckIcon className="size-4" /> : state === "locked" ? <LockIcon /> : index + 1}
       </span>
       <span className={cn("text-xs/tight", state === "locked" && "text-muted-foreground")}>{levelShortTitle(level)}</span>
-      <span className="h-3">{state === "done" && <Stars value={stars} />}</span>
+      {/* A flex box, not a block: an inline-flex Stars in a block would sit on a text line taller than h-3. */}
+      <span className="flex h-3 items-center">{state === "done" && <Stars value={stars} />}</span>
     </button>
   );
 }
@@ -98,7 +98,8 @@ function Track({
         </span>
         <p className="ml-auto hidden text-xs text-muted-foreground sm:block">{track.blurb}</p>
       </header>
-      <ol className="flex items-start overflow-x-auto pb-1">
+      {/* No scroller: the track fits its card — a row from sm up, a column on phones. */}
+      <ol className="flex flex-col sm:flex-row sm:items-start">
         {levels.map((level, i) => {
           const state = nodeState(level, progress);
           const prevDone = i > 0 && progress.completed.has(levels[i - 1].id);
@@ -108,7 +109,10 @@ function Track({
                 // The path between two stops: solid once the one before is done.
                 <li
                   aria-hidden
-                  className={cn("mt-[21px] h-0.5 min-w-3 flex-1", prevDone ? "bg-foreground" : "bg-border")}
+                  className={cn(
+                    "ml-[21px] h-4 w-0.5 sm:mt-[21px] sm:ml-0 sm:h-0.5 sm:w-auto sm:min-w-2 sm:flex-1",
+                    prevDone ? "bg-foreground" : "bg-border",
+                  )}
                 />
               )}
               <li>
@@ -153,7 +157,6 @@ function LevelDetail({
   return (
     <aside className="space-y-4 rounded-md border p-4 lg:sticky lg:top-16">
       <div className="flex items-center gap-2">
-        <Badge qualifier>{level.kind === "tutorial" ? "Tutorial" : "Task"}</Badge>
         <span className="font-mono text-xs text-muted-foreground">~{level.minutes} min</span>
         {state === "done" && <Stars value={row?.stars ?? 0} className="ml-auto inline-flex gap-0.5" />}
       </div>
@@ -161,13 +164,6 @@ function LevelDetail({
         <h3 className="text-lg font-semibold tracking-tight">{level.title}</h3>
         <p className="text-xs/relaxed text-muted-foreground">{level.goal}</p>
       </div>
-      <ul className="flex flex-wrap gap-1.5">
-        {level.skills.map((s) => (
-          <li key={s} className="rounded-md bg-muted px-2 py-0.5 text-[11px]">
-            {s}
-          </li>
-        ))}
-      </ul>
       <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs">
         <div>
           <dt className="text-muted-foreground">Best</dt>

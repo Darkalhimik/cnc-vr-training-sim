@@ -7,7 +7,7 @@ import { getActiveRun, useMachineStore } from "@/entities/machine/machine-store"
 import { stepRun } from "@/entities/machine/program-run";
 import { toolInStock } from "@/entities/machine/kinematics";
 import { AXES, spindleRpm, type AxisValues } from "@/entities/machine/machine-types";
-import { MATERIALS, toolByNumber } from "@/entities/part/tool-library";
+import { MATERIALS, toolByNumber, type LibraryTool } from "@/entities/part/tool-library";
 import { cutterOf, segment } from "@/features/part-development/cutter";
 import { createStockRemoval, type StockRemoval, type ToolPose } from "@/features/part-development/removal";
 import { useSessionStore } from "@/features/session/session-store";
@@ -19,6 +19,9 @@ import type { MachineRig } from "./machine-rig";
 const PROGRESS_S = 0.1;
 /** Material a non-cutting move may graze before it counts as a crash, mm³. */
 const GRAZE_MM3 = 0.5;
+
+/** Tool positions to sweep through the stock, with what they were made by. */
+type Sweep = { tool: LibraryTool; rapid: boolean; turning: boolean; poses: ToolPose[] };
 
 /**
  * The stock in the vise as a cuttable solid, and the loop that runs the
@@ -54,6 +57,8 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
   // budget is a fraction of a desktop's.
   useEffect(() => {
     ready.current = false;
+    // Sweeps of the blank that was there go with it.
+    queue.current = [];
     if (!stock || !removal) return;
     material.color.set(MATERIALS[stock.material].color);
     let cancelled = false;
@@ -68,15 +73,39 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
     };
   }, [stock, removal, material, deviceMode]);
 
+  /**
+   * The sweeps waiting for the worker, in the order the tool made them. A
+   * frame's sweep joins the last one waiting when it is the same tool, the
+   * same kind of move and the spindle is the same, so a busy worker gets
+   * fewer, longer sweeps — none is dropped: at 10× a dropped frame would be
+   * metal left on the part, and a task is graded on the part.
+   */
+  const queue = useRef<Sweep[]>([]);
+
+  /** Hand the worker what is waiting, at most four at a time — or all of it
+   *  at once (`flush`), so a measurement asked for after the program cannot
+   *  overtake its last cuts. */
+  const pump = (flush = false) => {
+    while (removal && ready.current && queue.current.length > 0 && (flush || inFlight.current <= 3)) {
+      send(queue.current.shift()!);
+    }
+  };
+
   const cut = (positions: AxisValues[], rapid: boolean) => {
     const store = useMachineStore.getState();
     const m = store.machine;
     const tool = toolByNumber(m.toolInSpindle);
     if (!removal || !ready.current || !tool || positions.length === 0) return;
-    // Back-pressure: drop a frame's sweep rather than queue minutes of work.
-    if (inFlight.current > 3) return;
     const poses: ToolPose[] = positions.map((p) => toolInStock(p, tool.length));
     const turning = spindleRpm(m) > 0;
+    const last = queue.current.at(-1);
+    if (last && last.tool === tool && last.rapid === rapid && last.turning === turning) last.poses.push(...poses);
+    else queue.current.push({ tool, rapid, turning, poses });
+    pump();
+  };
+
+  const send = ({ tool, rapid, turning, poses }: Sweep) => {
+    if (!removal) return;
     inFlight.current += 1;
     removal
       .cut(cutterOf(tool), poses)
@@ -101,6 +130,7 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
       .catch(() => {})
       .finally(() => {
         inFlight.current -= 1;
+        pump();
       });
   };
 
@@ -110,7 +140,8 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
     const run = getActiveRun();
 
     if (run && m.program === "running") {
-      const frame = stepRun(run, m, Math.min(dt, 0.1));
+      // Machine time runs simSpeed times faster than the clock.
+      const frame = stepRun(run, m, Math.min(dt, 0.1) * useSessionStore.getState().simSpeed);
       for (const action of frame.actions) store.runAction(action);
       cut(frame.feed, false);
       cut(frame.rapid, true);
@@ -123,6 +154,9 @@ export function MachineRuntime({ rig }: { rig: MachineRig }) {
       }
       return;
     }
+
+    // No program running: whatever is still waiting goes to the worker now.
+    if (queue.current.length > 0) pump(true);
 
     // Hand moves and zero returns: sweep what the rig actually drew.
     const drawn = rig.anim.position;

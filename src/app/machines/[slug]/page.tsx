@@ -51,7 +51,8 @@ export default function MachinePage() {
       <AppHeader crumbs={[{ label: machine.name }]} />
       <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1.55fr_1fr]">
         <section className="relative overflow-hidden rounded-md border bg-stage">
-          <div className="h-[46vh] min-h-80 lg:h-[calc(100dvh-10rem)] lg:max-h-[640px]">
+          {/* On lg the stage and its spec rows fit the screen under the header. */}
+          <div className="h-[46vh] min-h-80 lg:h-[calc(100dvh-17rem)] lg:max-h-[640px]">
             <MachineShowcase url={machine.modelUrl} />
           </div>
           <dl className="grid grid-cols-2 gap-px border-t border-white/10 bg-white/10 sm:grid-cols-3">
@@ -90,7 +91,8 @@ export default function MachinePage() {
               <PlayIcon />
               Levels
             </Link>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {/* Four across while the column is the page's width; in the lg side column, two. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
               <Link
                 href={`/world/${device}?at=${machine.id}`}
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3 text-xs font-medium transition-colors hover:bg-accent"

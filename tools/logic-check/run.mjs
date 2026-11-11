@@ -27,6 +27,9 @@ const files = [
   "src/entities/part/cam.ts",
   "src/entities/part/setup.ts",
   "src/features/part-development/program-check.ts",
+  "src/features/part-development/setup.ts",
+  "src/features/part-development/setup-shortcuts.ts",
+  "src/entities/world/navigation.ts",
   "src/features/cnc-tutorial/tutorial-engine.ts",
   "src/features/cnc-tutorial/steps/index.ts",
   "src/features/levels/tutorials.ts",
@@ -427,7 +430,7 @@ scenario("15. CYCLE START puts the interpreter's warnings on the message line", 
   assert.equal(store().machine.position.x, -0.01);
 });
 
-scenario("16. The sample job: CAM program, set up as the shortcuts do, cuts where the design says", () => {
+scenario("16. The sample job: CAM program, set up as the probes leave it, cuts where the design says", () => {
   const d = design.SAMPLE_DESIGN;
   const { text: program } = cam.generateProgram(d);
   const tools = { ...store().machine.tools };
@@ -717,7 +720,12 @@ scenario("19. Every tutorial level can be played to the end by doing what it say
   playLevel("umc500.tutorial.gcode-basics", () => {
     const job = useJobStore.getState();
     job.setProgram(job.program.replace("(YOUR MOVES HERE)", "G01 X30.\nY20.\nG03 X-30. R30.\nG01 Y-20."));
-    store().loadProgram("O02002", useJobStore.getState().program);
+    // The workspace puts it on the stick (useUsbStick); the pendant loads it.
+    store().writeUsb("O02002", useJobStore.getState().program);
+    key("LIST_PROGRAM");
+    key("RIGHT");
+    while (L.listFiles(store().machine)[store().machine.offsetCursor.row] !== "O02002") key("DOWN");
+    key("SELECT_PROGRAM");
     key("MEMORY");
     op("cycle_start");
     assert.equal(play(), "idle");
@@ -771,6 +779,164 @@ scenario("20. Tool crib: the standard set is as the levels were built on; a load
   }
   // Back on the standard set the sample job spots its holes with T4.
   assert.ok(/T4 M06/.test(cam.generateProgram(d).text));
+});
+
+scenario("21. Free play's job set up from the pendant alone: USB load, WIPS tool setter, WIPS part probe — on any blank the vise takes", () => {
+  const { setupSteps, programName, toolsCalled } = require(join(out, "features/part-development/setup.js"));
+  const key = (k) => store().pressKey(k);
+  const op = (part) => store().operate(part);
+  const typeKeys = (text) => {
+    for (const ch of text) key(/[A-Z]/.test(ch) ? `ALPHA_${ch}` : `NUM_${ch}`);
+  };
+  const job = { ...design.SAMPLE_DESIGN, stock: { ...design.SAMPLE_DESIGN.stock, x: 100, y: 75, z: 40 } };
+  assert.deepEqual(design.validateDesign(job), [], "the sample part fits a 100 × 75 × 40 blank");
+  const { text: program } = cam.generateProgram(job);
+  const name = programName(job);
+  const done = (id) => setupSteps(store().machine, job, program).find((s) => s.id === id).done;
+
+  // A started, homed machine with unmeasured tools and nothing set up.
+  readyStore();
+  assert.ok(done("ready"));
+  assert.ok(!done("stock") && !done("program") && !done("tools") && !done("zero"));
+
+  // The vise takes the job's blank with the door open.
+  op("door");
+  store().setStock({ size: [job.stock.x, job.stock.y, job.stock.z], material: job.stock.material });
+  op("door");
+  assert.ok(done("stock"));
+
+  // The program: on the stick from the workspace, loaded at LIST PROGRAM.
+  store().writeUsb(name, program);
+  assert.ok(!done("program"), "being on the stick is not being in the control");
+  key("LIST_PROGRAM");
+  assert.equal(store().machine.listDevice, "memory");
+  key("RIGHT");
+  assert.equal(store().machine.listDevice, "usb");
+  while (L.listFiles(store().machine)[store().machine.offsetCursor.row] !== name) key("DOWN");
+  key("SELECT_PROGRAM");
+  assert.equal(store().machine.activeProgram, name);
+  assert.ok(done("program"));
+
+  // Tool lengths: each tool into the spindle from MDI, then the WIPS tool setter.
+  key("MDI");
+  for (const t of toolsCalled(program)) {
+    if (store().machine.toolInSpindle !== t) {
+      typeKeys(`T${t}`);
+      key("ATC_FWD");
+      assert.equal(play(), "idle", store().message);
+      assert.equal(store().machine.toolInSpindle, t);
+    }
+    assert.equal(store().pressKey("TOOL_OFFSET_MEASURE").rejected, undefined);
+    assert.match(store().machine.mdi, new RegExp(`G10 L10 P${t} R`));
+    op("cycle_start");
+    assert.equal(play(), "idle", store().message);
+    assert.equal(store().machine.tools[t].length, TOOL_LIBRARY.find((x) => x.number === t).length);
+  }
+  assert.ok(done("tools"));
+
+  // Part zero: OFFSET → WORK, G54, F3 for the WIPS probe, CYCLE START.
+  key("OFFSET");
+  if (store().machine.offsetTab !== "work") key("OFFSET");
+  assert.equal(store().machine.offsetCursor.row, 0);
+  assert.equal(store().pressKey("F3").rejected, undefined);
+  op("cycle_start");
+  assert.equal(play(), "idle", store().message);
+  assert.deepEqual(store().machine.workOffsets.G54, idealWorkOffset(job.stock));
+  assert.ok(done("zero"));
+
+  // And it cuts.
+  key("MEMORY");
+  op("cycle_start");
+  assert.equal(play(), "idle", store().message);
+  assert.deepEqual(store().machine.alarms, []);
+  assert.ok(done("run"));
+
+  // Without a blank there is nothing to probe; without a stick, no USB tab.
+  readyStore({ stock: null, usb: null });
+  key("OFFSET");
+  if (store().machine.offsetTab !== "work") key("OFFSET");
+  assert.match(store().pressKey("F3").rejected ?? "", /clamp a blank/);
+  key("LIST_PROGRAM");
+  assert.match(store().pressKey("RIGHT").rejected ?? "", /No USB device/);
+});
+
+scenario("22. Walking: routes through the workshop go round machines and through the door; AR walks round the machine alone", () => {
+  const W = require(join(out, "entities/world/layout.js"));
+  const { findPath, nearestFree } = require(join(out, "entities/world/navigation.js"));
+  const { MACHINES } = require(join(out, "entities/catalog/machines.js"));
+  const world = W.buildWorld(MACHINES);
+  const station = (id) => world.stations.find((s) => s.id === id);
+
+  // Lobby to the machine: through the door (z = 0, |x| < 1.2), never through a wall or a footprint.
+  const from = world.spawn.position;
+  const to = station("umc500").stand.position;
+  const path = findPath(world, from, to);
+  assert.ok(path && path.length >= 2, "a route with a turn at the door");
+  const legs = [from, ...path];
+  let crossedDoor = false;
+  for (let i = 1; i < legs.length; i++) {
+    const [a, b] = [legs[i - 1], legs[i]];
+    for (let t = 0; t <= 1; t += 0.02) {
+      const p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      assert.ok(!W.isBlocked(world, p), `leg ${i} walks through something at ${p.map((n) => n.toFixed(2))}`);
+      if (Math.abs(p[1]) < 0.05) crossedDoor ||= Math.abs(p[0]) < 1.2;
+    }
+  }
+  assert.ok(crossedDoor, "the route goes through the shop door");
+  near(path.at(-1)[0], to[0], 1e-9, "ends at the stand x");
+  near(path.at(-1)[1], to[1], 1e-9, "ends at the stand z");
+  // Round the back of the machine (where the air valve is) from the front.
+  const back = [station("umc500").position[0] - 2.3, station("umc500").position[1]];
+  const round = findPath(world, to, nearestFree(world, back));
+  assert.ok(round && round.length >= 2, "goes round, not through");
+
+  // AR: one box on an open floor, turned 90°: 2.9 wide (x) and 2.8 deep (z) in its own frame.
+  const box = { center: [0, -3], yaw: Math.PI / 2, half: [1.45, 1.4] };
+  // Straight at it along +z from the front: stops short of the box plus the walker's radius.
+  let p = [0, 0];
+  for (let i = 0; i < 100; i++) p = W.slideAround(box, p, [0, -0.05]);
+  near(p[1], -3 + 1.45 + W.WALKER_RADIUS, 0.051, "stops at the turned box's face");
+  // Sideways along its face it slides.
+  const slid = W.slideAround(box, p, [0.05, -0.05]);
+  near(slid[0], p[0] + 0.05, 1e-9, "slides along the face");
+  // Inside it (the machine was put down on them) they walk out freely; no box, no limits.
+  assert.deepEqual(W.slideAround(box, [0, -3], [0, 0.1]), [0, -2.9]);
+  assert.deepEqual(W.slideAround(null, [0, -3], [0, -10]), [0, -13]);
+});
+
+scenario("23. Shortcuts make a part: Set up all from a cold machine, Run it, and the program run at 10x reaches M30 the same", () => {
+  const { setUpAll, shortcutFor } = require(join(out, "features/part-development/setup-shortcuts.js"));
+  const { setupSteps } = require(join(out, "features/part-development/setup.js"));
+  const { useJobStore } = require(join(out, "features/part-development/job-store.js"));
+  useJobStore.getState().loadJob(design.SAMPLE_DESIGN);
+  const steps = () => {
+    const { design: d, program } = useJobStore.getState();
+    return setupSteps(store().machine, d, program);
+  };
+
+  store().reset();
+  assert.equal(steps()[0].done, false, "a cold machine is not started");
+  assert.equal(setUpAll(), null, store().message);
+  assert.deepEqual(steps().map((s) => [s.id, s.done]), [["ready", true], ["stock", true], ["program", true], ["tools", true], ["zero", true], ["run", false]]);
+
+  const run = shortcutFor(steps().find((s) => !s.done));
+  assert.equal(run.label, "Run it");
+  assert.equal(run.run(), null, store().message);
+  assert.equal(store().machine.program, "running");
+  // Ten times faster: half a second of machine time per 50 ms frame.
+  let frames = 0;
+  for (; frames < 20000; frames++) {
+    const r = getActiveRun();
+    const m = store().machine;
+    if (!r || m.program !== "running") break;
+    const frame = R.stepRun(r, m, 0.5);
+    for (const action of frame.actions) store().runAction(action);
+    if (frame.progress) store().runAction(frame.progress);
+  }
+  const m = store().machine;
+  assert.equal(m.program, "idle", `still ${m.program} after ${frames} frames`);
+  assert.deepEqual(m.alarms, []);
+  assert.ok(steps().every((s) => s.done), "every step done, the part run to M30");
 });
 
 rmSync(temp, { recursive: true, force: true });

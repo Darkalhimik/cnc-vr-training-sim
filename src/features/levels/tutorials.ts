@@ -665,7 +665,7 @@ const gcodeBasics: TutorialLevel = {
     },
     {
       id: "check",
-      title: "Check and send",
+      title: "Check and load",
       shortLabel: "Check",
       guard: { holds: () => true, violation: "" },
       phases: [
@@ -681,8 +681,9 @@ const gcodeBasics: TutorialLevel = {
         },
         {
           id: "send",
-          instruction: `Send it to the machine: it is stored as ${BASICS_NAME} and selected.`,
+          instruction: `It is on the USB stick in the pendant as ${BASICS_NAME}. Load it: full panel, LIST PROGRAM, RIGHT to the USB tab, highlight ${BASICS_NAME}, SELECT PROGRAM.`,
           highlight: [],
+          keys: ["LIST_PROGRAM", "RIGHT", "SELECT_PROGRAM"],
           done: (m) => m.activeProgram === BASICS_NAME && m.programs[BASICS_NAME] === useJobStore.getState().program,
         },
       ],

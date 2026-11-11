@@ -22,13 +22,18 @@ import { getDb, schema } from "./db";
 function createAuth() {
   const db = getDb();
   const extraHosts = (process.env.AUTH_ALLOWED_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
+  // In development the dev server is also opened from a headset or a phone
+  // on the same Wi-Fi, by the laptop's private address — which changes.
+  const lanHosts =
+    process.env.NODE_ENV === "production" ? [] : ["10.*:*", "192.168.*:*", "172.*:*", "*.local:*"];
   return betterAuth({
     appName: "CNC Trainer",
     // A fixed URL when one is configured; otherwise whichever allowed host the
     // request came to — localhost in development, the deployment's own
-    // *.vercel.app preview and production hosts, and the self-hosted box.
+    // *.vercel.app preview and production hosts, the self-hosted box, and in
+    // development the laptop's address on the local network.
     baseURL: process.env.BETTER_AUTH_URL ?? {
-      allowedHosts: ["localhost:*", "127.0.0.1:*", "*.vercel.app", ...extraHosts],
+      allowedHosts: ["localhost:*", "127.0.0.1:*", "*.vercel.app", ...lanHosts, ...extraHosts],
     },
     database: drizzleAdapter(db, { provider: "pg", schema }),
     emailAndPassword: { enabled: true, minPasswordLength: 8, autoSignIn: true },

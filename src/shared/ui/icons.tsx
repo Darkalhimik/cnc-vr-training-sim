@@ -52,6 +52,18 @@ export const ChevronRightIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const ChevronUpIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 10l4.5-4.5 4.5 4.5" />
+  </Svg>
+);
+
+export const ChevronDownIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 6l4.5 4.5 4.5-4.5" />
+  </Svg>
+);
+
 export const PlayIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M5 3.5v9l7-4.5z" fill="currentColor" />
