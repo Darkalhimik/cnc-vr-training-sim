@@ -59,6 +59,24 @@ function placedFor(stand: [number, number]) {
   };
 }
 
+/** Lowest a board comes down to beside a machine made small, m. */
+const LOWEST_READING_Y = 1.25;
+
+/**
+ * A board beside a machine sized `scale` times: the same board — never
+ * scaled, so it stays readable — drawn in towards the machine (or out from
+ * it) in proportion, so it is not left metres away from a tabletop model.
+ * It comes down with the machine too, but not below reading height; it does
+ * not go up past where it hangs at full size. Its turn is unchanged: scaling
+ * both it and the trainee's spot keeps the direction between them.
+ */
+function nearMachine(placed: Placed, scale: number): Placed {
+  if (scale === 1) return placed;
+  const [x, y, z] = placed.position;
+  const lowest = Math.min(y, LOWEST_READING_Y);
+  return { position: [x * scale, Math.min(y, Math.max(y * scale, lowest)), z * scale], yaw: placed.yaw };
+}
+
 const PLACED_FOR_THE_BAY = {
   mode: { position: [...MODE_BOARD.position], yaw: MODE_BOARD.yaw },
   status: { position: [...STATUS_BOARD.position], yaw: STATUS_BOARD.yaw },
@@ -70,17 +88,27 @@ export function SceneBoards({
   gameMode,
   showView = true,
   stand,
+  scale = 1,
 }: {
   gameMode: GameMode;
   showView?: boolean;
   /** Where the trainee stands, in the machine's frame, when not 2.6 m out. */
   stand?: [number, number];
+  /** How big the machine is drawn (AR): the boards keep their size and
+   *  come in towards it, or go out, in proportion. */
+  scale?: number;
 }) {
   const machineScale = useSessionStore((s) => s.machineScale);
   const setMachineScale = useSessionStore((s) => s.setMachineScale);
   const turnMachine = useSessionStore((s) => s.turnMachine);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
-  const placed = stand ? placedFor(stand) : PLACED_FOR_THE_BAY;
+  const atFullSize = stand ? placedFor(stand) : PLACED_FOR_THE_BAY;
+  const placed = {
+    mode: nearMachine(atFullSize.mode, scale),
+    status: nearMachine(atFullSize.status, scale),
+    lectern: nearMachine(atFullSize.lectern, scale),
+    warning: nearMachine(atFullSize.warning, scale),
+  };
   const [sx, sy, sz] = placed.status.position;
 
   return (

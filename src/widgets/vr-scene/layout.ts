@@ -3,12 +3,12 @@ import type { DeviceMode } from "@/entities/machine/machine-types";
 /**
  * Where an AR trainee stands to the machine, as in the first AR version: the
  * machine is simply there on the floor in front of them when the session
- * starts, facing them — no placing step. Closer than it was: the pendant's
- * face is 1.32 m in front of the machine's centre (build_umc500.py), so a
- * centre 1.85 m away puts the keys at arm's length. The machine sits a little
+ * starts, facing them — no placing step. The pendant's face is 1.32 m in
+ * front of the machine's centre (build_umc500.py): a centre 2.2 m away puts
+ * the keys a step away, the whole front in view. The machine sits a little
  * to the left, so the door and the pendant (right of centre) are ahead.
  */
-export const AR_STAND = { distance: 1.85, side: 0.3 } as const;
+export const AR_STAND = { distance: 2.2, side: 0.3 } as const;
 
 /** The AR trainee's spot in the machine's own frame (front towards +z). */
 export const AR_STAND_IN_MACHINE: [number, number] = [AR_STAND.side, AR_STAND.distance];

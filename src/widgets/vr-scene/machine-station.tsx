@@ -86,12 +86,14 @@ export function MachineStation({ gameMode, boards, adjustable, interactive, stan
       </group>
 
       {/* The full-size pendant stands to the right of the machine, turned
-          towards the operator. Unscaled: it is read, not inspected. Touching
-          it gives it the desktop keyboard (its keys stop the click itself,
-          not the pointer going down and up). */}
+          towards the operator. Unscaled: it is read, not inspected — but it
+          keeps its place beside a machine drawn smaller or larger, coming in
+          or going out in proportion at the same height. Touching it gives it
+          the desktop keyboard (its keys stop the click itself, not the
+          pointer going down and up). */}
       {fullPanelOpen && (
         <group
-          position={[2.05, 1.32, 1.3]}
+          position={[2.05 * scale, 1.32, 1.3 * scale]}
           rotation={[0, -0.55, 0]}
           onPointerDown={(e) => touchPanel(e.nativeEvent.timeStamp)}
           onPointerUp={(e) => touchPanel(e.nativeEvent.timeStamp)}
@@ -111,7 +113,7 @@ export function MachineStation({ gameMode, boards, adjustable, interactive, stan
 
       {/* Outside the scaled group: a board that shrinks with the machine stops
           being readable, and a safety warning that shrinks stops being one. */}
-      {boards && <SceneBoards gameMode={gameMode} showView={adjustable} stand={stand} />}
+      {boards && <SceneBoards gameMode={gameMode} showView={adjustable} stand={stand} scale={scale} />}
     </>
   );
 }

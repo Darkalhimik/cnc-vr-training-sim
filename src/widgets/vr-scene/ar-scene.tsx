@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { XR, XROrigin, useXR, type createXRStore } from "@react-three/xr";
 import * as THREE from "three";
 import { MACHINES, machineById } from "@/entities/catalog/machines";
@@ -114,24 +114,26 @@ const startPose = (mode: ArMode): Pose => ({ position: new THREE.Vector3(...getS
 
 /**
  * The machine, the trainee's rig and how they get about, inside the canvas.
- * As in the first AR version, there is no placing step: when the session
- * starts the machine is on the floor in front of the trainee (AR_STAND,
- * nearer than then), facing them. In the glasses, "Bring machine here" on
- * the left wrist puts it in front of them again wherever they have walked or
- * teleported to.
+ * As in the first AR version, there is no placing step: the machine stands
+ * on the floor in front of where the trainee starts (AR_STAND), facing them,
+ * and stays there. In the glasses, "Bring machine here" on the left wrist
+ * puts it in front of them again; nothing else moves it until the page is
+ * loaded again.
  */
 function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
   const camera = useThree((s) => s.camera);
   const session = useXR((s) => s.session);
   const originRef = useRef<THREE.Group>(null);
+  // Set once per page load; only bringHere changes it.
   const [pose, setPose] = useState<Pose>(() => startPose(mode));
   const machineScale = useSessionStore((s) => s.machineScale);
   const machineYaw = useSessionStore((s) => s.machineYaw);
   const arMachineId = useWorldStore((s) => s.arMachineId);
   const setArMachine = useWorldStore((s) => s.setArMachine);
 
-  /** In front of the trainee's head as it is now, facing them; null until
-   *  the headset reports a pose with a level gaze. */
+  /** In front of the trainee's head as it is now, facing them — as far as
+   *  suits the machine at its present size; null when the gaze is straight
+   *  up or down. */
   const inFrontOfHead = (): Pose | null => {
     const head = camera.getWorldPosition(new THREE.Vector3());
     const ahead = camera.getWorldDirection(new THREE.Vector3()).setY(0);
@@ -139,31 +141,21 @@ function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
     ahead.normalize();
     const right = new THREE.Vector3(-ahead.z, 0, ahead.x);
     const position = head
-      .addScaledVector(ahead, AR_STAND.distance)
-      .addScaledVector(right, -AR_STAND.side)
+      .addScaledVector(ahead, AR_STAND.distance * machineScale)
+      .addScaledVector(right, -AR_STAND.side * machineScale)
       .setY(0);
     // The machine's front (+z) looks back along the trainee's gaze.
     return { position, yaw: Math.atan2(-ahead.x, -ahead.z) };
   };
 
-  // A new session starts where the trainee stands: the rig back at the
-  // origin, and — once the headset has reported where the head is — the
-  // machine in front of them. Placing by the head, not the reference
-  // space's origin, keeps that true whatever floor space the device gives
-  // (bounded-floor puts the origin at the middle of the play area).
-  const placeOnFrame = useRef(0);
+  // The machine moves only when the trainee moves it — "Bring machine here",
+  // or loading the page again. A new session only puts the trainee's rig
+  // back where they stand; the session's floor space (local-floor) starts at
+  // their feet looking down −z, so the machine's spot is in front of them.
   useEffect(() => {
     originRef.current?.position.set(0, 0, 0);
     originRef.current?.rotation.set(0, 0, 0);
-    setPose(startPose(mode));
-    placeOnFrame.current = session ? 3 : 0;
-  }, [session, mode]);
-  useFrame(() => {
-    if (placeOnFrame.current === 0) return;
-    if (--placeOnFrame.current > 0) return;
-    const p = inFrontOfHead();
-    if (p) setPose(p);
-  });
+  }, [session]);
 
   const bringHere = () => {
     const p = inFrontOfHead();
@@ -208,7 +200,9 @@ function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
 
       <group position={pose.position} rotation={[0, pose.yaw, 0]}>
         <MachineStation gameMode={gameMode} boards adjustable interactive stand={AR_STAND_IN_MACHINE} />
-        <BlobShadow />
+        <group scale={machineScale}>
+          <BlobShadow />
+        </group>
       </group>
     </>
   );
