@@ -1,26 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { TeleportTarget, XR, XROrigin, useXR, type createXRStore } from "@react-three/xr";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { XR, XROrigin, useXR, type createXRStore } from "@react-three/xr";
 import * as THREE from "three";
 import { MACHINES, machineById } from "@/entities/catalog/machines";
 import type { DeviceMode, GameMode } from "@/entities/machine/machine-types";
+import { insideBox } from "@/entities/world/layout";
 import { useSessionStore } from "@/features/session/session-store";
 import { useWorldStore } from "@/features/world/world-store";
-import { HapticsBridge } from "@/features/xr/haptics";
-import { XrLocomotion, slideAroundBox, teleportTo, type FloorBox } from "@/features/xr/locomotion";
-import { GlassesPlacement, type Pose } from "./ar-placement";
-import { getPreviewCamera, getSceneGroupPosition } from "./layout";
+import { HapticsBridge, pulse } from "@/features/xr/haptics";
+import { StickTeleport, XrLocomotion, slideAroundBox, type FloorBox } from "@/features/xr/locomotion";
+import { AR_STAND, AR_STAND_IN_MACHINE, getPreviewCamera, getSceneGroupPosition } from "./layout";
 import { MachineStation } from "./machine-station";
 import { WristMenu } from "./wrist-menu";
 
+type ArMode = Extract<DeviceMode, "glasses" | "phone">;
+
 type ArSceneProps = {
-  mode: Extract<DeviceMode, "glasses" | "phone">;
+  mode: ArMode;
   gameMode: GameMode;
   xrStore: ReturnType<typeof createXRStore>;
   onSessionInfo: (info: string | null) => void;
 };
+
+/** Where the machine stands on the floor, and its turn about +Y. */
+type Pose = { position: THREE.Vector3; yaw: number };
 
 /** How wide the preview must show: the machine and the boards either side. */
 const PREVIEW_SPAN = 6.4;
@@ -31,7 +36,7 @@ const PREVIEW_SPAN = 6.4;
  * narrow (portrait) canvas too. In the session the glasses or phone drive
  * the camera.
  */
-function PreviewFraming({ mode }: { mode: ArSceneProps["mode"] }) {
+function PreviewFraming({ mode }: { mode: ArMode }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const size = useThree((s) => s.size);
   const session = useXR((s) => s.session);
@@ -79,54 +84,105 @@ function ArPassthrough({ onSessionInfo }: { onSessionInfo: (info: string | null)
   return null;
 }
 
-/** The trainee's own floor as a teleport target: invisible, everywhere. */
-function TeleportFloor({ originRef }: { originRef: React.RefObject<THREE.Group | null> }) {
-  const camera = useThree((s) => s.camera);
-  const movement = useSessionStore((s) => s.xrMovement);
-  if (movement !== "teleport") return null;
+/** A soft dark disc that grounds the machine on a real floor. */
+function BlobShadow() {
+  const texture = useMemo(() => {
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d")!;
+    const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.18, size / 2, size / 2, size / 2);
+    g.addColorStop(0, "rgba(0,0,0,0.55)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(canvas);
+  }, []);
+  useEffect(() => () => texture.dispose(), [texture]);
   return (
-    <TeleportTarget onTeleport={(point) => teleportTo(originRef.current, point, camera)}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[80, 80]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
-      </mesh>
-    </TeleportTarget>
+    <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => {}}>
+      <planeGeometry args={[4, 4]} />
+      <meshBasicMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
+    </mesh>
   );
 }
 
+/** Where the machine stands when a session starts: in front of where the
+ *  trainee stands then, facing them (the reference space's origin is that
+ *  spot, looking down −z). */
+const startPose = (mode: ArMode): Pose => ({ position: new THREE.Vector3(...getSceneGroupPosition(mode)), yaw: 0 });
+
 /**
- * Augmented reality: the machine alone, in the trainee's own room — AR
- * glasses or a phone. No workshop around it: the room they are standing in is
- * the backdrop. Everything the side panel holds stands beside it as boards.
- * Glasses put the machine down on their floor where the trainee points; a
- * phone shows it where it always has.
- *
- * Getting about is as in VR glasses (XrLocomotion: teleport, walk or the
- * stick), only with nothing to bump into but the machine. The left wrist
- * carries the movement choice and which machine is out.
+ * The machine, the trainee's rig and how they get about, inside the canvas.
+ * As in the first AR version, there is no placing step: when the session
+ * starts the machine is on the floor in front of the trainee (AR_STAND,
+ * nearer than then), facing them. In the glasses, "Bring machine here" on
+ * the left wrist puts it in front of them again wherever they have walked or
+ * teleported to.
  */
-export function ArScene({ mode, gameMode, xrStore, onSessionInfo }: ArSceneProps) {
-  const placement = getSceneGroupPosition(mode);
+function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
+  const camera = useThree((s) => s.camera);
+  const session = useXR((s) => s.session);
   const originRef = useRef<THREE.Group>(null);
+  const [pose, setPose] = useState<Pose>(() => startPose(mode));
   const machineScale = useSessionStore((s) => s.machineScale);
   const machineYaw = useSessionStore((s) => s.machineYaw);
   const arMachineId = useWorldStore((s) => s.arMachineId);
   const setArMachine = useWorldStore((s) => s.setArMachine);
 
-  // Where the machine stands, for walking round it: the phone's fixed spot,
-  // or wherever the glasses put it down (none while it is being carried).
-  const pose = useRef<Pose | null>({ position: new THREE.Vector3(...placement), yaw: 0 });
-  const onPose = useCallback((p: Pose | null) => {
-    pose.current = p;
-  }, []);
-  const slide = useMemo(() => {
+  /** In front of the trainee's head as it is now, facing them; null until
+   *  the headset reports a pose with a level gaze. */
+  const inFrontOfHead = (): Pose | null => {
+    const head = camera.getWorldPosition(new THREE.Vector3());
+    const ahead = camera.getWorldDirection(new THREE.Vector3()).setY(0);
+    if (ahead.lengthSq() < 1e-6) return null;
+    ahead.normalize();
+    const right = new THREE.Vector3(-ahead.z, 0, ahead.x);
+    const position = head
+      .addScaledVector(ahead, AR_STAND.distance)
+      .addScaledVector(right, -AR_STAND.side)
+      .setY(0);
+    // The machine's front (+z) looks back along the trainee's gaze.
+    return { position, yaw: Math.atan2(-ahead.x, -ahead.z) };
+  };
+
+  // A new session starts where the trainee stands: the rig back at the
+  // origin, and — once the headset has reported where the head is — the
+  // machine in front of them. Placing by the head, not the reference
+  // space's origin, keeps that true whatever floor space the device gives
+  // (bounded-floor puts the origin at the middle of the play area).
+  const placeOnFrame = useRef(0);
+  useEffect(() => {
+    originRef.current?.position.set(0, 0, 0);
+    originRef.current?.rotation.set(0, 0, 0);
+    setPose(startPose(mode));
+    placeOnFrame.current = session ? 3 : 0;
+  }, [session, mode]);
+  useFrame(() => {
+    if (placeOnFrame.current === 0) return;
+    if (--placeOnFrame.current > 0) return;
+    const p = inFrontOfHead();
+    if (p) setPose(p);
+  });
+
+  const bringHere = () => {
+    const p = inFrontOfHead();
+    if (!p) return;
+    setPose(p);
+    pulse("detent");
+  };
+
+  // The machine on the floor, for walking round it and landing beside it.
+  const box = useMemo((): FloorBox => {
     const [w, d] = machineById(arMachineId)?.footprint ?? [2.9, 2.8];
-    return slideAroundBox((): FloorBox | null => {
-      const p = pose.current;
-      if (!p) return null;
-      return { center: [p.position.x, p.position.z], yaw: p.yaw + machineYaw, half: [(w * machineScale) / 2, (d * machineScale) / 2] };
-    });
-  }, [arMachineId, machineScale, machineYaw]);
+    return {
+      center: [pose.position.x, pose.position.z],
+      yaw: pose.yaw + machineYaw,
+      half: [(w * machineScale) / 2, (d * machineScale) / 2],
+    };
+  }, [arMachineId, machineScale, machineYaw, pose]);
+  const slide = useMemo(() => slideAroundBox(() => box), [box]);
+  const canStand = useMemo(() => (p: [number, number]) => !insideBox(box, p), [box]);
 
   // Only the UMC-500 has a working model and control today; the others are
   // listed so the menu reads the same when they arrive.
@@ -136,7 +192,37 @@ export function ArScene({ mode, gameMode, xrStore, onSessionInfo }: ArSceneProps
     disabled: m.id !== "umc500",
     onPress: () => setArMachine(m.id),
   }));
+  const glasses = mode === "glasses";
 
+  return (
+    <>
+      <XROrigin ref={originRef}>
+        {glasses && (
+          <>
+            <WristMenu machines={machines} actions={[{ label: "Bring machine here", onPress: bringHere }]} />
+            <StickTeleport originRef={originRef} canStand={canStand} />
+          </>
+        )}
+      </XROrigin>
+      {glasses && <XrLocomotion originRef={originRef} slide={slide} />}
+
+      <group position={pose.position} rotation={[0, pose.yaw, 0]}>
+        <MachineStation gameMode={gameMode} boards adjustable interactive stand={AR_STAND_IN_MACHINE} />
+        <BlobShadow />
+      </group>
+    </>
+  );
+}
+
+/**
+ * Augmented reality: the machine alone, in the trainee's own room — AR
+ * glasses or a phone. No workshop around it: the room they are standing in is
+ * the backdrop. Everything the side panel holds stands beside it as boards.
+ * Getting about in the glasses is as in VR glasses (XrLocomotion: teleport,
+ * walk or the stick), with nothing to bump into but the machine; a phone is
+ * simply carried round it.
+ */
+export function ArScene({ mode, gameMode, xrStore, onSessionInfo }: ArSceneProps) {
   return (
     <div className="relative h-full w-full">
       <Canvas dpr={[1, 1.75]} camera={{ fov: getPreviewCamera(mode).fov }} gl={{ antialias: true, alpha: true }}>
@@ -151,26 +237,8 @@ export function ArScene({ mode, gameMode, xrStore, onSessionInfo }: ArSceneProps
           <directionalLight position={[-5, 3.5, -2]} intensity={0.55} />
           <directionalLight position={[0, 4, -6]} intensity={0.45} />
 
-          <XROrigin ref={originRef}>{mode === "glasses" && <WristMenu machines={machines} />}</XROrigin>
-          {mode === "glasses" && (
-            <>
-              <XrLocomotion originRef={originRef} slide={slide} />
-              <TeleportFloor originRef={originRef} />
-            </>
-          )}
-
           <HapticsBridge />
-          {mode === "glasses" ? (
-            <GlassesPlacement preview={placement} onPose={onPose}>
-              {(placing) => (
-                <MachineStation gameMode={gameMode} boards={!placing} adjustable interactive={!placing} />
-              )}
-            </GlassesPlacement>
-          ) : (
-            <group position={placement}>
-              <MachineStation gameMode={gameMode} boards adjustable interactive />
-            </group>
-          )}
+          <ArWorld mode={mode} gameMode={gameMode} />
         </XR>
       </Canvas>
     </div>

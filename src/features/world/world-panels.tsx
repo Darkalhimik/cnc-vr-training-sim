@@ -19,6 +19,7 @@ import { MATERIALS, type StockMaterial } from "@/entities/part/tool-library";
 import { CribList } from "@/features/tooling/ui/crib-list";
 import { LoadoutEditor } from "@/features/tooling/ui/loadout-editor";
 import { ToolDetails } from "@/features/tooling/ui/tool-details";
+import { ImmersiveLaunch } from "@/widgets/hud/immersive-launch";
 import { ThemeToggle } from "@/widgets/theme-toggle/theme-toggle";
 import { startLevel } from "./world-session";
 import { WORLD, useWorldStore } from "./world-store";
@@ -62,11 +63,10 @@ function Controls({ device }: { device: DeviceMode }) {
         ]
       : [
           ["Walk", "your own room moves you, in every movement mode"],
-          ["Teleport", "point at the floor, pull the trigger (Teleport mode)"],
+          ["Stick forward", "aim a teleport, let go to jump (Teleport mode)"],
           ["Left stick", "walk (Joystick mode)"],
-          ["Right stick", "turn in steps (Teleport and Joystick)"],
-          ["Left wrist", "movement mode, and in AR the machine"],
-          ["Trigger / pinch", "press buttons and keys"],
+          ["Right stick", "sideways: turn in steps (Teleport and Joystick)"],
+          ["Trigger / pinch", "press buttons, keys and levers"],
         ];
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -129,20 +129,7 @@ export function WorldPanel({
         )}
       </section>
 
-      {device === "vr" && (
-        <Section title="VR glasses">
-          <Button size="lg" className="w-full" onClick={onEnterImmersive}>
-            Enter VR
-          </Button>
-          {xrError ? (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{xrError}</p>
-          ) : (
-            <p className="text-xs/relaxed text-muted-foreground">
-              Open this page in the VR glasses&apos; browser and press Enter VR. Here you see a preview.
-            </p>
-          )}
-        </Section>
-      )}
+      {device === "vr" && <ImmersiveLaunch device="vr" onEnter={onEnterImmersive} error={xrError} />}
 
       {device === "vr" && (
         <Section title="Movement">
@@ -315,15 +302,15 @@ function MovementSwitch() {
   const movement = useSessionStore((s) => s.xrMovement);
   const setMovement = useSessionStore((s) => s.setXrMovement);
   const help: Record<XrMovement, string> = {
-    teleport: "Point at the floor and pull the trigger to jump there. The right stick turns.",
+    teleport: "Push a stick forward, aim the arc at the floor, let go to jump there. The right stick sideways turns.",
     walk: "Only your own steps move you. Turn by turning round.",
-    joystick: "The left stick walks you, the right stick turns; the trigger presses what the ray points at.",
+    joystick: "The left stick walks you, the right stick turns.",
   };
   return (
     <div className="space-y-2">
       <SegmentedControl options={XR_MOVEMENTS} value={movement} onChange={setMovement} fill />
       <p className="text-xs/relaxed text-muted-foreground">
-        {help[movement]} In the glasses the same choice is on your left wrist.
+        {help[movement]} In every mode the trigger presses what the ray points at. Choose before entering the glasses.
       </p>
     </div>
   );

@@ -335,15 +335,18 @@ export type FloorBox = { center: Vec2; yaw: number; half: Vec2 };
  * starts inside the box (it grew round them, or was put down on them) walks
  * out freely.
  */
+/** Whether a walker of radius `r` standing at `p` overlaps the box. */
+export function insideBox(box: FloorBox, p: Vec2, r = WALKER_RADIUS) {
+  const [c, s] = [Math.cos(box.yaw), Math.sin(box.yaw)];
+  // Into the box's own frame: three's rotation.y = yaw, undone.
+  const [dx, dz] = [p[0] - box.center[0], p[1] - box.center[1]];
+  return Math.abs(dx * c - dz * s) < box.half[0] + r && Math.abs(dx * s + dz * c) < box.half[1] + r;
+}
+
 export function slideAround(box: FloorBox | null, from: Vec2, step: Vec2, r = WALKER_RADIUS): Vec2 {
   const full: Vec2 = [from[0] + step[0], from[1] + step[1]];
   if (!box) return full;
-  const [c, s] = [Math.cos(box.yaw), Math.sin(box.yaw)];
-  // Into the box's own frame: three's rotation.y = yaw, undone.
-  const inside = (p: Vec2) => {
-    const [dx, dz] = [p[0] - box.center[0], p[1] - box.center[1]];
-    return Math.abs(dx * c - dz * s) < box.half[0] + r && Math.abs(dx * s + dz * c) < box.half[1] + r;
-  };
+  const inside = (p: Vec2) => insideBox(box, p, r);
   if (inside(from) || !inside(full)) return full;
   const alongX: Vec2 = [from[0] + step[0], from[1]];
   if (!inside(alongX)) return alongX;

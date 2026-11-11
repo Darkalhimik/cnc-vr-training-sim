@@ -17,15 +17,9 @@ import { useLevelSession } from "@/features/levels/level-session";
 import { TaskPanel } from "@/features/levels/ui/task-panel";
 import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
+import { ImmersiveLaunch } from "@/widgets/hud/immersive-launch";
 import type { MachineInfo } from "@/entities/catalog/machines";
-import {
-  DEVICE_LABEL,
-  DEVICE_MODES,
-  DEVICE_SHORT,
-  isImmersive as immersive,
-  type DeviceMode,
-  type GameMode,
-} from "@/entities/machine/machine-types";
+import { DEVICE_MODES, DEVICE_SHORT, type DeviceMode, type GameMode } from "@/entities/machine/machine-types";
 
 const GAME_MODE_TITLE: Record<GameMode, string> = {
   freeplay: "Free play",
@@ -109,7 +103,6 @@ export function HudSidePanel({
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
 
-  const isImmersive = immersive(deviceMode);
 
   return (
     <aside
@@ -152,6 +145,11 @@ export function HudSidePanel({
           fill
         />
       </section>
+
+      {/* Going in: the first thing under the mode switch, as in VR. */}
+      {deviceMode !== "desktop" && (
+        <ImmersiveLaunch device={deviceMode} onEnter={onEnterImmersive} error={xrError} sessionInfo={xrSessionInfo} />
+      )}
 
       {children}
 
@@ -213,33 +211,6 @@ export function HudSidePanel({
         </div>
       </Section>
 
-      {isImmersive && (
-        <Section title="Immersive">
-          <div className="space-y-2">
-            <Button size="lg" onClick={onEnterImmersive} className="w-full">
-              {deviceMode === "vr" ? "Enter VR" : `Start ${DEVICE_LABEL[deviceMode]}`}
-            </Button>
-
-            {xrError ? (
-              <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs/relaxed text-destructive-foreground">
-                {xrError}
-              </p>
-            ) : (
-              <p className="text-xs/relaxed text-muted-foreground">
-                {deviceMode === "vr"
-                  ? "Preview mode is active. Use Enter VR in WebXR-capable VR glasses."
-                  : "Preview mode is active. Use Enter AR on a supported mobile device."}
-              </p>
-            )}
-
-            {xrSessionInfo && (
-              <p className="rounded-md border bg-muted/50 px-3 py-2 font-mono text-[10px] text-muted-foreground">
-                {xrSessionInfo}
-              </p>
-            )}
-          </div>
-        </Section>
-      )}
     </aside>
   );
 }

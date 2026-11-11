@@ -1,11 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useRef } from "react";
-import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import { XR, type createXRStore } from "@react-three/xr";
 import type * as THREE from "three";
 import type { GameMode } from "@/entities/machine/machine-types";
-import type { Station } from "@/entities/world/layout";
+import { isBlocked, roomAt, type Station } from "@/entities/world/layout";
+import { StickTeleport } from "@/features/xr/locomotion";
 import { useSessionStore } from "@/features/session/session-store";
 import { useWarehouseStore } from "@/features/warehouse/warehouse-api";
 import { WORLD, useWorldStore } from "@/features/world/world-store";
@@ -13,12 +14,11 @@ import { isDragClick } from "@/shared/lib/pointer";
 import { CabinetDisplay } from "@/widgets/warehouse-scene/warehouse-scene";
 import { ToolCart, ToolCrib } from "@/widgets/tooling/tool-racks";
 import { MachineStation } from "@/widgets/vr-scene/machine-station";
-import { WristMenu } from "@/widgets/vr-scene/wrist-menu";
 import { DesktopNavigator } from "./desktop-navigator";
 import { LevelTerminal, ProgressWall } from "./lobby-boards";
 import { Rooms } from "./rooms";
 import { WorldLighting } from "./world-lighting";
-import { PlayerOrigin, PreviewCamera, VrLocomotion, teleportTo } from "./vr-locomotion";
+import { PlayerOrigin, PreviewCamera, VrLocomotion } from "./vr-locomotion";
 import { HapticsBridge } from "@/features/xr/haptics";
 import { CarryLayer } from "./carry-layer";
 
@@ -128,11 +128,9 @@ function ToolStation({ station, desktop }: { station: Station; desktop: boolean 
   );
 }
 
-/** Floors take the teleport arc and move the player's origin. */
-function TeleportFloors({ originRef }: { originRef: React.RefObject<THREE.Group | null> }) {
-  const camera = useThree((s) => s.camera);
-  return <Rooms layout={WORLD} onTeleport={(point) => teleportTo(originRef.current, point, camera)} />;
-}
+/** Where a teleport may land in the workshop: on a floor, clear of walls,
+ *  machines and furniture. */
+const canStandInWorkshop = (p: [number, number]) => !!roomAt(WORLD, p) && !isBlocked(WORLD, p);
 
 /**
  * The workshop: rooms, the machines in their bays with their tool carts, the
@@ -163,7 +161,7 @@ export function WorldScene({ device, gameMode, xrStore }: Props) {
           <WorldLighting />
 
           <Suspense fallback={null}>
-            {desktop ? <Rooms layout={WORLD} /> : <TeleportFloors originRef={originRef} />}
+            <Rooms layout={WORLD} />
 
             {stations.map((s) => {
               switch (s.kind) {
@@ -200,7 +198,7 @@ export function WorldScene({ device, gameMode, xrStore }: Props) {
           ) : (
             <>
               <PlayerOrigin originRef={originRef}>
-                <WristMenu />
+                <StickTeleport originRef={originRef} canStand={canStandInWorkshop} />
               </PlayerOrigin>
               <VrLocomotion originRef={originRef} />
               <PreviewCamera originRef={originRef} />

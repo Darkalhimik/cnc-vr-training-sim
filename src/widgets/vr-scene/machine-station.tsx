@@ -38,6 +38,9 @@ type Props = {
    *  desktop: a click on the machine then opens the menu, it does not press
    *  what is under the cursor. */
   interactive: boolean;
+  /** Where the trainee stands in the machine's frame, for the boards, when
+   *  nearer than in a workshop bay (AR). */
+  stand?: [number, number];
 };
 
 /**
@@ -46,7 +49,7 @@ type Props = {
  * pendant when open, and the boards that stand in for the side panel. The
  * workshop puts it in a bay; AR puts it on the trainee's floor.
  */
-export function MachineStation({ gameMode, boards, adjustable, interactive }: Props) {
+export function MachineStation({ gameMode, boards, adjustable, interactive, stand }: Props) {
   const interactWithPart = useInteraction();
   const hoveredPart = useSessionStore((s) => s.hoveredPart);
   const hintsEnabled = useSessionStore((s) => s.hintsEnabled);
@@ -108,7 +111,7 @@ export function MachineStation({ gameMode, boards, adjustable, interactive }: Pr
 
       {/* Outside the scaled group: a board that shrinks with the machine stops
           being readable, and a safety warning that shrinks stops being one. */}
-      {boards && <SceneBoards gameMode={gameMode} showView={adjustable} />}
+      {boards && <SceneBoards gameMode={gameMode} showView={adjustable} stand={stand} />}
     </>
   );
 }

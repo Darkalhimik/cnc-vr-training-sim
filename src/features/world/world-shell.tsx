@@ -104,20 +104,14 @@ export function WorldShell({ device, levelId, at }: Props) {
   /** On a phone the panel can be folded away under the stage. */
   const [panelOpen, setPanelOpen] = useState(true);
 
-  // The headset gets the teleport arc on its controllers and hands; hands
-  // poke and pinch by default. `emulate: false` because @pmndrs/xr otherwise
-  // injects the IWER emulator in development, and its DevUI's second WebGL
-  // context, when it cannot be created, takes the whole scene down with it.
-  const xrStore = useMemo(
-    () =>
-      createXRStore({
-        emulate: false,
-        controller: { teleportPointer: true },
-        hand: { teleportPointer: true },
-        foveation: 1,
-      }),
-    [],
-  );
+  // Controllers keep only their ray: the trigger presses what it points at.
+  // Teleport is a stick pushed forward (StickTeleport) — pmndrs' teleport
+  // pointer would share the trigger with the ray and win whenever its arc
+  // landed nearer than the control aimed at. Hands poke and pinch.
+  // `emulate: false` because @pmndrs/xr otherwise injects the IWER emulator
+  // in development, and its DevUI's second WebGL context, when it cannot be
+  // created, takes the whole scene down with it.
+  const xrStore = useMemo(() => createXRStore({ emulate: false, foveation: 1 }), []);
 
   // Where the trainee starts: at the station asked for, at the level's
   // machine, or in the lobby. Set before the first frame, so the camera and
@@ -135,14 +129,8 @@ export function WorldShell({ device, levelId, at }: Props) {
     arrive(station.id);
   });
 
-  // Movement in the glasses: the teleport arc only when teleporting.
-  const xrMovement = useSessionStore((s) => s.xrMovement);
+  // Movement in the glasses, as this browser chose it last.
   useEffect(() => useSessionStore.getState().loadXrMovement(), []);
-  useEffect(() => {
-    const teleportPointer = xrMovement === "teleport";
-    xrStore.setController({ teleportPointer });
-    xrStore.setHand({ teleportPointer });
-  }, [xrStore, xrMovement]);
 
   useLevelRuntime(level ? level.kind : "freeplay", level?.id ?? null);
   const gameMode = useGameMode();
