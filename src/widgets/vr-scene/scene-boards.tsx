@@ -123,13 +123,13 @@ export function SceneBoards({
         <StatusBoard3D />
       </group>
 
-      {showView && (
-        <group position={placed.lectern.position} rotation={[0, placed.lectern.yaw, 0]}>
-          <group rotation={[VIEW_LECTERN.tilt, 0, 0]}>
-            <SizePanel3D value={machineScale} onChange={setMachineScale} onTurn={turnMachine} />
-          </group>
+      {/* In every immersive mode: the full panel and the program speed; the
+          size and the turn only where the machine can be sized (showView). */}
+      <group position={placed.lectern.position} rotation={[0, placed.lectern.yaw, 0]}>
+        <group rotation={[VIEW_LECTERN.tilt, 0, 0]}>
+          <SizePanel3D value={machineScale} onChange={setMachineScale} onTurn={turnMachine} adjustable={showView} />
         </group>
-      )}
+      </group>
 
       <group position={placed.warning.position} rotation={[0, placed.warning.yaw, 0]}>
         <WarningBoard3D />

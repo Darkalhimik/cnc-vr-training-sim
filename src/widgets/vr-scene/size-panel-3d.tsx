@@ -4,6 +4,7 @@ import {
   MACHINE_SCALE_MAX,
   MACHINE_SCALE_MIN,
   MACHINE_SCALE_STEP,
+  SIM_SPEEDS,
   useSessionStore,
 } from "@/features/session/session-store";
 import { BUTTON_H, PAD, StackBoard, buttonsRow, linesHeight, textRow, type Row } from "./board-kit";
@@ -17,17 +18,23 @@ type Props = {
   onChange: (next: number) => void;
   /** Turn the machine a quarter turn; the way round to its rear panel. */
   onTurn: (direction: 1 | -1) => void;
+  /** Size and turn the machine: only where it is placed in the trainee's own
+   *  room (AR). In a workshop bay it stands at full size. */
+  adjustable?: boolean;
 };
 
 /**
- * The side panel's View section in the scene: the machine's size, a quarter
- * turn either way to reach its back, and the full-size pendant. It does not
- * scale with the machine — a size control that shrinks with what it sizes
- * can end up too small to press.
+ * The side panel's View section in the scene: the machine's size and a
+ * quarter turn either way to reach its back (AR, where it can be sized),
+ * the full-size pendant, and how fast a program runs. It does not scale
+ * with the machine — a size control that shrinks with what it sizes can end
+ * up too small to press.
  */
-export function SizePanel3D({ value, onChange, onTurn }: Props) {
+export function SizePanel3D({ value, onChange, onTurn, adjustable = true }: Props) {
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
+  const simSpeed = useSessionStore((s) => s.simSpeed);
+  const setSimSpeed = useSessionStore((s) => s.setSimSpeed);
 
   const stepper: Row = {
     h: BUTTON_H,
@@ -44,14 +51,27 @@ export function SizePanel3D({ value, onChange, onTurn }: Props) {
     <StackBoard
       width={VIEW_BOARD_W}
       rows={[
-        textRow("VIEW · SIZE", "caption", INNER, { gap: 0.015 }),
-        stepper,
-        textRow("TURN", "caption", INNER, { gap: 0.015 }),
+        ...(adjustable
+          ? [
+              textRow("VIEW · SIZE", "caption", INNER, { gap: 0.015 }),
+              stepper,
+              textRow("TURN", "caption", INNER, { gap: 0.015 }),
+              buttonsRow(
+                [
+                  { label: "Left 90°", onPress: () => onTurn(-1) },
+                  { label: "Right 90°", onPress: () => onTurn(1) },
+                ],
+                INNER,
+              ),
+            ]
+          : []),
+        textRow("PROGRAM SPEED", "caption", INNER, { gap: 0.015 }),
         buttonsRow(
-          [
-            { label: "Left 90°", onPress: () => onTurn(-1) },
-            { label: "Right 90°", onPress: () => onTurn(1) },
-          ],
+          SIM_SPEEDS.map((speed) => ({
+            label: `${speed}×`,
+            onPress: () => setSimSpeed(speed),
+            variant: speed === simSpeed ? ("primary" as const) : ("secondary" as const),
+          })),
           INNER,
         ),
         textRow("PENDANT", "caption", INNER, { gap: 0.015 }),

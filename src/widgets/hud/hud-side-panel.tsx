@@ -9,6 +9,8 @@ import { ThemeToggle } from "@/widgets/theme-toggle/theme-toggle";
 import {
   MACHINE_SCALE_MAX,
   MACHINE_SCALE_MIN,
+  SIM_SPEEDS,
+  type SimSpeed,
   useSessionStore,
 } from "@/features/session/session-store";
 import { FreePlayOverlay } from "@/features/free-play/ui/freeplay-overlay";
@@ -102,6 +104,8 @@ export function HudSidePanel({
   const turnMachine = useSessionStore((s) => s.turnMachine);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
+  const simSpeed = useSessionStore((s) => s.simSpeed);
+  const setSimSpeed = useSessionStore((s) => s.setSimSpeed);
 
 
   return (
@@ -198,6 +202,15 @@ export function HudSidePanel({
             </div>
           </>
         )}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Program speed</span>
+          <SegmentedControl
+            options={SIM_SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }))}
+            value={String(simSpeed)}
+            onChange={(v) => setSimSpeed(Number(v) as SimSpeed)}
+            className="ml-auto"
+          />
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Pendant</span>
           <Button

@@ -11,6 +11,8 @@ import { toneOf, TONE_CLASSES } from "@/shared/ui/tone";
 import { useSessionStore } from "@/features/session/session-store";
 import { useJobStore } from "../job-store";
 import { programName, setupSteps } from "../setup";
+import { setUpAll, shortcutFor } from "../setup-shortcuts";
+import { showToast } from "@/shared/ui/toast";
 import { useStockRegistry } from "../stock-registry";
 import { SavePartButton } from "@/features/warehouse/save-part-button";
 import { StockPicker } from "./stock-picker";
@@ -18,9 +20,9 @@ import { StockPicker } from "./stock-picker";
 /**
  * Section body, not a card. Free play's job in the side panel: the part and
  * the blank it is cut from, the setup checklist read off the machine — each
- * step says how to do it at the machine; nothing here does it for the
- * trainee — the way into the workspace, and the warehouse once something is
- * cut. Designing and editing are desktop work; on a headset this section is
+ * step says how to do it at the machine, and a shortcut does it instead when
+ * the point is the part (or "Set up all" does them all) — the way into the
+ * workspace, and the warehouse once something is cut. Designing and editing are desktop work; on a headset this section is
  * what the trainee sees.
  */
 export function PartDevelopmentPanel() {
@@ -36,6 +38,10 @@ export function PartDevelopmentPanel() {
 
   const steps = setupSteps(machine, design, program);
   const next = steps.find((s) => !s.done);
+  const shortcut = next ? shortcutFor(next) : null;
+  const report = (refused: string | null) => {
+    if (refused) showToast(refused, "warning");
+  };
   const machined = machine.lastProgramDone === programName(design);
 
   const exportStl = async () => {
@@ -82,12 +88,22 @@ export function PartDevelopmentPanel() {
                 <p className={cn("text-xs", state === "pending" && "text-muted-foreground")}>{step.title}</p>
                 {step === next && <p className="text-xs/relaxed text-muted-foreground">{step.detail}</p>}
               </div>
+              {step === next && shortcut && (
+                <Button size="sm" variant="secondary" onClick={() => report(shortcut.run())}>
+                  {shortcut.label}
+                </Button>
+              )}
             </li>
           );
         })}
       </ol>
 
       <div className="flex flex-wrap items-center gap-2">
+        {next && next.id !== "run" && (
+          <Button size="md" variant="secondary" onClick={() => report(setUpAll())}>
+            Set up all
+          </Button>
+        )}
         {deviceMode === "desktop" ? (
           <Button size="md" onClick={() => setWorkspaceOpen(!workspaceOpen)}>
             {workspaceOpen ? "Close workspace" : "Open workspace"}

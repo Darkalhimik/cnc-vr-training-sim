@@ -30,6 +30,10 @@ export const XR_MOVEMENTS: { value: XrMovement; label: string }[] = [
 ];
 const XR_MOVEMENT_KEY = "cnc-xr-movement";
 
+/** How much faster than real time a program runs on the machine. */
+export const SIM_SPEEDS = [1, 2, 5, 10] as const;
+export type SimSpeed = (typeof SIM_SPEEDS)[number];
+
 type SessionStore = {
   deviceMode: DeviceMode;
   gameMode: GameMode;
@@ -54,6 +58,10 @@ type SessionStore = {
   panelPointerAt: number;
   /** Movement in VR and AR glasses; kept per browser. */
   xrMovement: XrMovement;
+  /** Programs run this many times faster than real time — moves, cuts, dwells
+   *  and tool changes alike. Hand jogging, the zero return and the control's
+   *  boot keep real time. */
+  simSpeed: SimSpeed;
 
   setDeviceMode: (mode: DeviceMode) => void;
   setGameMode: (mode: GameMode) => void;
@@ -68,6 +76,7 @@ type SessionStore = {
   /** A pointer went down or up on the full panel: it takes the keyboard. */
   touchPanel: (timeStamp: number) => void;
   setXrMovement: (movement: XrMovement) => void;
+  setSimSpeed: (speed: SimSpeed) => void;
   /** Read the movement this browser chose last (after hydration). */
   loadXrMovement: () => void;
 };
@@ -92,6 +101,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
   panelKeyboard: false,
   panelPointerAt: -1,
   xrMovement: "teleport",
+  simSpeed: 1,
 
   setDeviceMode: (mode) => set({ deviceMode: mode }),
   setGameMode: (mode) => set({ gameMode: mode }),
@@ -106,6 +116,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
   setFullPanelOpen: (open) => set({ fullPanelOpen: open, panelKeyboard: open }),
   setPanelKeyboard: (on) => set((s) => ({ panelKeyboard: on && s.fullPanelOpen })),
   touchPanel: (timeStamp) => set({ panelPointerAt: timeStamp, panelKeyboard: true }),
+  setSimSpeed: (speed) => set({ simSpeed: speed }),
   setXrMovement: (movement) => {
     set({ xrMovement: movement });
     try {

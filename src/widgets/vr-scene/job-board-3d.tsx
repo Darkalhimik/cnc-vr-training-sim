@@ -4,6 +4,9 @@ import { useMachineStore } from "@/entities/machine/machine-store";
 import { STOCK_PRESETS, type Stock } from "@/entities/part/part-design";
 import { useJobStore } from "@/features/part-development/job-store";
 import { programName, setupSteps } from "@/features/part-development/setup";
+import { setUpAll, shortcutFor } from "@/features/part-development/setup-shortcuts";
+import { useSessionStore } from "@/features/session/session-store";
+import { showToast } from "@/shared/ui/toast";
 import { PAD, StackBoard, buttonsRow, checklistRow, textRow, type Row } from "./board-kit";
 import { MACHINES } from "@/entities/catalog/machines";
 import { useBoardNavigation } from "./board-navigation";
@@ -25,7 +28,8 @@ function stepBlank(stock: Stock, step: 1 | -1): [number, number, number] | null 
  * Free play's job in the scene, for VR and AR where the side panel is not
  * visible: the blank (a size the shop stocks, stepped smaller or larger),
  * the setup checklist read off the machine with how to do the next step at
- * the machine, and the warehouse once something is cut. Designing and
+ * the machine and a shortcut that does it ("Set up all" for the lot), the
+ * full panel, and the warehouse once something is cut. Designing and
  * editing stay on the desktop.
  */
 export function JobBoard3D() {
@@ -35,8 +39,14 @@ export function JobBoard3D() {
   const updateStock = useJobStore((s) => s.updateStock);
   const nav = useBoardNavigation();
   const save = useSavePart("umc500");
+  const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
+  const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
   const steps = setupSteps(machine, design, program);
   const next = steps.find((s) => !s.done);
+  const shortcut = next ? shortcutFor(next) : null;
+  const report = (refused: string | null) => {
+    if (refused) showToast(refused, "warning");
+  };
   const smaller = stepBlank(design.stock, -1);
   const larger = stepBlank(design.stock, 1);
   const blankTo = (size: [number, number, number] | null) => () => {
@@ -62,7 +72,30 @@ export function JobBoard3D() {
       INNER,
     ),
     ...(next ? [textRow(next.detail, "muted", INNER, { color: PANEL.textMuted })] : []),
-    buttonsRow([...(save ? [save] : []), { label: "Level map", onPress: () => void nav.toMap() }], INNER),
+    // The shortcuts: the next step done for the trainee, or all of setup.
+    ...(next
+      ? [
+          buttonsRow(
+            [
+              ...(shortcut ? [{ label: shortcut.label, variant: "primary" as const, onPress: () => report(shortcut.run()) }] : []),
+              ...(next.id !== "run" ? [{ label: "Set up all", onPress: () => report(setUpAll()) }] : []),
+            ],
+            INNER,
+          ),
+        ]
+      : []),
+    buttonsRow(
+      [
+        {
+          label: fullPanelOpen ? "Close full panel" : "Open full panel",
+          variant: fullPanelOpen ? ("primary" as const) : ("secondary" as const),
+          onPress: () => setFullPanelOpen(!fullPanelOpen),
+        },
+        ...(save ? [save] : []),
+        { label: "Level map", onPress: () => void nav.toMap() },
+      ],
+      INNER,
+    ),
   ];
 
   return <StackBoard width={MODE_BOARD_W} rows={rows} />;

@@ -28,6 +28,7 @@ const files = [
   "src/entities/part/setup.ts",
   "src/features/part-development/program-check.ts",
   "src/features/part-development/setup.ts",
+  "src/features/part-development/setup-shortcuts.ts",
   "src/entities/world/navigation.ts",
   "src/features/cnc-tutorial/tutorial-engine.ts",
   "src/features/cnc-tutorial/steps/index.ts",
@@ -901,6 +902,41 @@ scenario("22. Walking: routes through the workshop go round machines and through
   // Inside it (the machine was put down on them) they walk out freely; no box, no limits.
   assert.deepEqual(W.slideAround(box, [0, -3], [0, 0.1]), [0, -2.9]);
   assert.deepEqual(W.slideAround(null, [0, -3], [0, -10]), [0, -13]);
+});
+
+scenario("23. Shortcuts make a part: Set up all from a cold machine, Run it, and the program run at 10x reaches M30 the same", () => {
+  const { setUpAll, shortcutFor } = require(join(out, "features/part-development/setup-shortcuts.js"));
+  const { setupSteps } = require(join(out, "features/part-development/setup.js"));
+  const { useJobStore } = require(join(out, "features/part-development/job-store.js"));
+  useJobStore.getState().loadJob(design.SAMPLE_DESIGN);
+  const steps = () => {
+    const { design: d, program } = useJobStore.getState();
+    return setupSteps(store().machine, d, program);
+  };
+
+  store().reset();
+  assert.equal(steps()[0].done, false, "a cold machine is not started");
+  assert.equal(setUpAll(), null, store().message);
+  assert.deepEqual(steps().map((s) => [s.id, s.done]), [["ready", true], ["stock", true], ["program", true], ["tools", true], ["zero", true], ["run", false]]);
+
+  const run = shortcutFor(steps().find((s) => !s.done));
+  assert.equal(run.label, "Run it");
+  assert.equal(run.run(), null, store().message);
+  assert.equal(store().machine.program, "running");
+  // Ten times faster: half a second of machine time per 50 ms frame.
+  let frames = 0;
+  for (; frames < 20000; frames++) {
+    const r = getActiveRun();
+    const m = store().machine;
+    if (!r || m.program !== "running") break;
+    const frame = R.stepRun(r, m, 0.5);
+    for (const action of frame.actions) store().runAction(action);
+    if (frame.progress) store().runAction(frame.progress);
+  }
+  const m = store().machine;
+  assert.equal(m.program, "idle", `still ${m.program} after ${frames} frames`);
+  assert.deepEqual(m.alarms, []);
+  assert.ok(steps().every((s) => s.done), "every step done, the part run to M30");
 });
 
 rmSync(temp, { recursive: true, force: true });
