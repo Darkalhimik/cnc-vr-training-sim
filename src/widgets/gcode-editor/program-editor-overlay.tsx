@@ -78,7 +78,6 @@ function EditorOverlay() {
   const programs = useMachineStore((s) => s.machine.programs);
   const activeProgram = useMachineStore((s) => s.machine.activeProgram);
   const toolInSpindle = useMachineStore((s) => s.machine.toolInSpindle);
-  const loadProgram = useMachineStore((s) => s.loadProgram);
   const against = useProgramEditor((s) => s.against);
   const setAgainst = useProgramEditor((s) => s.setAgainst);
   const viewing = useProgramEditor((s) => s.viewing);
@@ -99,10 +98,11 @@ function EditorOverlay() {
   const [confirmCopy, setConfirmCopy] = useState(false);
   const editor = useRef<CodeEditorHandle>(null);
 
+  // The program is on the USB stick as it is typed (useUsbStick); Ctrl+S
+  // says where it is and how it gets into the control.
   const send = () => {
     if (readOnly) return;
-    const { rejected } = loadProgram(name, program);
-    showToast(rejected ?? `${name} sent to the control and selected.`, rejected ? "warning" : "success");
+    showToast(`${name} is on the USB stick. Load it at the machine: LIST PROGRAM, RIGHT to USB, SELECT PROGRAM.`, "info");
   };
   const check = () => {
     const a = runNow();
@@ -163,27 +163,56 @@ function EditorOverlay() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="flex items-center gap-3 border-b px-3 py-2">
-        <h2 className="text-sm font-semibold tracking-tight">Program editor</h2>
-        <span className="font-mono text-xs">{viewing ?? name}</span>
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2">
+        <h2 className="text-sm font-semibold tracking-tight max-sm:hidden">Program editor</h2>
+        <span className="font-mono text-xs max-xl:hidden">{viewing ?? name}</span>
+        {/* Below xl the program list is not shown: pick the program here. */}
+        <select
+          aria-label="Program"
+          value={viewing ?? ""}
+          onChange={(e) => view(e.target.value || null)}
+          className="h-7 rounded-md border bg-background px-2 font-mono text-xs xl:hidden"
+        >
+          <option value="">{name} · job</option>
+          {memory.map((key) => (
+            <option key={key} value={key}>
+              {key} · control memory
+            </option>
+          ))}
+        </select>
         <Badge qualifier>{readOnly ? "read-only" : programEdited ? "edited" : "from design"}</Badge>
-        <span className="text-xs text-muted-foreground">{design.name}</span>
-        <div className="ml-auto flex items-center gap-2">
+        <span className="text-xs text-muted-foreground max-lg:hidden">{design.name}</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <SegmentedControl options={CHECK_TARGETS} value={against} onChange={setAgainst} />
           <Button size="md" variant="secondary" onClick={check} title="Ctrl+Enter">
             Check
           </Button>
-          <Button size="md" onClick={send} disabled={readOnly} title="Ctrl+S">
-            Send to machine
-          </Button>
+          {readOnly ? (
+            <Button size="md" variant={confirmCopy ? "danger" : "secondary"} className="xl:hidden" onClick={editCopy}>
+              {confirmCopy ? "Replace the job program" : "Edit a copy"}
+            </Button>
+          ) : (
+            <button
+              type="button"
+              onClick={send}
+              title="Ctrl+S"
+              className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <span className="max-md:hidden">On the USB stick as </span>
+              <span className="md:hidden">USB: </span>
+              {name}
+            </button>
+          )}
           <Button size="md" variant="ghost" onClick={close} title="Esc">
             Close
           </Button>
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)_minmax(18rem,28rem)]">
-        <aside className="flex min-h-0 flex-col overflow-y-auto border-r pb-3">
+      {/* xl: programs | code | backplot. md–xl: code | backplot, the program
+          picked in the header. Phones: code over backplot. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,42%)] md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:grid-rows-1 xl:grid-cols-[13rem_minmax(0,1fr)_minmax(18rem,28rem)]">
+        <aside className="hidden min-h-0 flex-col overflow-y-auto border-r pb-3 xl:flex">
           <SideHeading>Job</SideHeading>
           <ProgramRow
             name={name}
@@ -207,7 +236,7 @@ function EditorOverlay() {
           {readOnly && (
             <div className="mt-auto space-y-2 border-t px-3 pt-3">
               <p className="text-xs/relaxed text-muted-foreground">
-                {viewing} is shown as the control holds it. Edit a copy to change it here and send it back as {name}.
+                {viewing} is shown as the control holds it. Edit a copy to change it here; it goes back on the USB stick as {name}.
               </p>
               <Button size="md" variant={confirmCopy ? "danger" : "secondary"} className="w-full" onClick={editCopy}>
                 {confirmCopy ? "Replace the job program" : "Edit a copy"}
@@ -250,7 +279,7 @@ function EditorOverlay() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col border-l">
+        <aside className="flex min-h-0 flex-col border-t md:border-t-0 md:border-l">
           <div className="min-h-0 flex-1">
             <Backplot
               toolpath={toolpath}
@@ -259,7 +288,7 @@ function EditorOverlay() {
               onPickLine={(line) => editor.current?.goToLine(line)}
             />
           </div>
-          <div className="space-y-2 border-t p-3">
+          <div className="max-h-[45%] space-y-2 overflow-y-auto border-t p-3">
             <CheckSummary analysis={analysis} stale={stale} />
             {toolpath && toolpath.feeds.length > 0 && (
               <ul className="grid gap-1">
@@ -282,7 +311,7 @@ function EditorOverlay() {
         </aside>
       </div>
 
-      {/* The shell's toasts sit under this overlay; Send and Check report here. */}
+      {/* The shell's toasts sit under this overlay; Ctrl+S and Check report here. */}
       <div className="pointer-events-none absolute right-4 bottom-4 max-w-sm">
         <div className="pointer-events-auto">
           <ToastContainer />

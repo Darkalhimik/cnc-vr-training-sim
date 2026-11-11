@@ -29,6 +29,27 @@ export const JAW_GRIP = 8;
 
 export type Stock = { x: number; y: number; z: number; material: StockMaterial };
 
+/**
+ * The blanks the simulated vise takes, mm: the range its jaws open over (X)
+ * and a blank can sit along them (Y), and a height that leaves something
+ * above the 8 mm the jaws grip. These are the simulator's vise, not a Haas
+ * figure: the UMC-500 itself swings parts up to 457 mm across (umc500.md §2).
+ */
+export const STOCK_LIMITS = { min: { x: 20, y: 20, z: 15 }, max: { x: 160, y: 160, z: 120 } } as const;
+
+/** Bar and plate sizes a shop keeps cut to length, smallest first. */
+export const STOCK_PRESETS: [number, number, number][] = [
+  [50, 50, 25],
+  [60, 40, 30],
+  [80, 60, 30],
+  [80, 60, 40],
+  [100, 75, 40],
+  [100, 100, 50],
+  [125, 100, 50],
+  [150, 100, 60],
+  [160, 160, 100],
+];
+
 type Base = { id: string; face: Face };
 
 export type Feature =
@@ -125,11 +146,15 @@ export type DesignIssue = { featureId: string | null; message: string };
 export function validateDesign(d: PartDesign): DesignIssue[] {
   const issues: DesignIssue[] = [];
   const { stock } = d;
-  if (stock.x < 20 || stock.y < 20 || stock.z < 15) {
-    issues.push({ featureId: null, message: "Stock is too small to hold in the vise (min 20 × 20 × 15 mm)." });
+  const { min, max } = STOCK_LIMITS;
+  if (stock.x < min.x || stock.y < min.y || stock.z < min.z) {
+    issues.push({ featureId: null, message: `Stock is too small to hold in the vise (min ${min.x} × ${min.y} × ${min.z} mm).` });
   }
-  if (stock.x > 160 || stock.y > 160 || stock.z > 120) {
-    issues.push({ featureId: null, message: "Stock is larger than the vise and work envelope allow (max 160 × 160 × 120 mm)." });
+  if (stock.x > max.x || stock.y > max.y || stock.z > max.z) {
+    issues.push({
+      featureId: null,
+      message: `Stock is larger than the vise and work envelope allow (max ${max.x} × ${max.y} × ${max.z} mm).`,
+    });
   }
   for (const f of d.features) {
     const [w, h] = faceSize(f.face, stock);

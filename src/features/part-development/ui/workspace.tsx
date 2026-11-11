@@ -13,8 +13,6 @@ import {
   type Feature,
   type FeatureKind,
 } from "@/entities/part/part-design";
-import { MATERIALS, type StockMaterial } from "@/entities/part/tool-library";
-import { useMachineStore } from "@/entities/machine/machine-store";
 import type { Diagnostic } from "@/entities/nc";
 import { showToast } from "@/shared/ui/toast";
 import {
@@ -28,6 +26,7 @@ import {
 } from "@/widgets/gcode-editor";
 import { useSessionStore } from "@/features/session/session-store";
 import { useJobStore, type WorkspaceTab } from "../job-store";
+import { StockPicker } from "./stock-picker";
 
 const KIND_LABEL: Record<FeatureKind, string> = {
   face: "Facing",
@@ -152,7 +151,6 @@ function DesignTab() {
   const design = useJobStore((s) => s.design);
   const camWarnings = useJobStore((s) => s.camWarnings);
   const updateDesign = useJobStore((s) => s.updateDesign);
-  const updateStock = useJobStore((s) => s.updateStock);
   const addFeature = useJobStore((s) => s.addFeature);
   const updateFeature = useJobStore((s) => s.updateFeature);
   const removeFeature = useJobStore((s) => s.removeFeature);
@@ -181,25 +179,7 @@ function DesignTab() {
 
       <section className="space-y-2">
         <h4 className="text-[11px] font-semibold uppercase tracking-wide">Stock</h4>
-        <div className="grid grid-cols-4 gap-2">
-          <Num label="X" value={design.stock.x} step={1} onChange={(x) => updateStock({ x })} />
-          <Num label="Y" value={design.stock.y} step={1} onChange={(y) => updateStock({ y })} />
-          <Num label="Z" value={design.stock.z} step={1} onChange={(z) => updateStock({ z })} />
-          <label className="grid min-w-0 gap-1">
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Material</span>
-            <select
-              value={design.stock.material}
-              onChange={(e) => updateStock({ material: e.target.value as StockMaterial })}
-              className={inputClass}
-            >
-              {Object.entries(MATERIALS).map(([value, m]) => (
-                <option key={value} value={value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <StockPicker />
         <p className="text-xs/relaxed text-muted-foreground">
           Part zero (G54) is the top-face centre. Feature positions are millimetres from each face&apos;s
           centre, u right and v up as you look at that face; depth goes into the part.
@@ -298,7 +278,6 @@ function ProgramTab() {
   const design = useJobStore((s) => s.design);
   const setProgram = useJobStore((s) => s.setProgram);
   const programEdited = useJobStore((s) => s.programEdited);
-  const loadProgram = useMachineStore((s) => s.loadProgram);
   const against = useProgramEditor((s) => s.against);
   const setAgainst = useProgramEditor((s) => s.setAgainst);
   const openFullScreen = useProgramEditor((s) => s.open);
@@ -334,17 +313,12 @@ function ProgramTab() {
           <Button size="sm" variant="secondary" onClick={check}>
             Check
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              const { rejected } = loadProgram(name, program);
-              showToast(rejected ?? `${name} sent to the control and selected.`, rejected ? "warning" : "success");
-            }}
-          >
-            Send to machine
-          </Button>
         </div>
       </div>
+      <p className="text-xs/relaxed text-muted-foreground">
+        Saved to the USB stick in the pendant as <span className="font-mono">{name}</span>. Load it at the machine: full
+        panel, LIST PROGRAM, RIGHT to USB, SELECT PROGRAM.
+      </p>
       <CodeEditor
         ref={editor}
         value={program}
@@ -389,7 +363,9 @@ export function PartWorkspace() {
   const tab = isTask ? "program" : selected;
 
   return (
-    <aside className="pointer-events-auto flex h-full w-[30rem] max-w-[calc(100vw-22rem)] flex-col border-r bg-background/95 backdrop-blur">
+    // Beside the panel from md up; over the whole stage on a phone, where the
+    // panel is under it.
+    <aside className="pointer-events-auto flex h-full w-screen flex-col border-r bg-background/95 backdrop-blur md:w-[30rem] md:max-w-[calc(100vw-22rem)]">
       <header className="flex items-center gap-2 border-b p-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide">{isTask ? "Program" : "Workspace"}</h3>
         {!isTask && <SegmentedControl options={tabs} value={tab} onChange={setTab} className="ml-auto" />}

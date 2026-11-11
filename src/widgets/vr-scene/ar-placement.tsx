@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { XRSpace, useRequestXRAnchor, useXR, useXRHitTest, useXRInputSourceState } from "@react-three/xr";
+import { useXR, useXRHitTest, useXRInputSourceState } from "@react-three/xr";
 import * as THREE from "three";
 import { pulse } from "@/features/xr/haptics";
 import { StackBoard, buttonsRow, textRow, PAD } from "./board-kit";
@@ -10,15 +10,18 @@ import { StackBoard, buttonsRow, textRow, PAD } from "./board-kit";
 /**
  * Putting the machine in the trainee's own room, with AR glasses. Once the
  * session starts the machine follows a ring on the floor where the right
- * controller (or hand) points; a trigger pull or a pinch puts it down, held
- * by an XR anchor where the headset offers one so it stays put as tracking
- * settles. "Move the machine" picks it up again.
+ * controller (or hand) points; a trigger pull or a pinch puts it down.
+ * "Move the machine" picks it up again.
+ *
+ * It is put down in the scene's coordinates, not on an XR anchor: the
+ * trainee can teleport or walk with the stick (XrLocomotion), which moves
+ * them through the scene — an anchored machine would travel with them.
  *
  * Without hit testing the ring sits on the floor 2.5 m ahead of the user.
  * Before the session — the page preview — the machine stands where ArScene
  * puts it for phones.
  */
-type Pose = { position: THREE.Vector3; yaw: number };
+export type Pose = { position: THREE.Vector3; yaw: number };
 
 const NO_HIT_MS = 1500;
 const BOARD_W = 1.1;
@@ -62,27 +65,45 @@ function Reticle() {
 
 export function GlassesPlacement({
   preview,
+  onPose,
   children,
 }: {
   /** Where the machine stands before the session starts. */
   preview: [number, number, number];
+  /** Where the machine stands now, or null while it is being carried. */
+  onPose?: (pose: Pose | null) => void;
   /** The machine and its boards; told whether it is still being placed. */
   children: (placing: boolean) => React.ReactNode;
 }) {
   const session = useXR((s) => s.session);
+  const [px, py, pz] = preview;
+  useEffect(() => {
+    if (!session) onPose?.({ position: new THREE.Vector3(px, py, pz), yaw: 0 });
+  }, [session, onPose, px, py, pz]);
   if (!session) return <group position={preview}>{children(false)}</group>;
-  return <Placing session={session}>{children}</Placing>;
+  return (
+    <Placing session={session} onPose={onPose}>
+      {children}
+    </Placing>
+  );
 }
 
-function Placing({ session, children }: { session: XRSession; children: (placing: boolean) => React.ReactNode }) {
+function Placing({
+  session,
+  onPose,
+  children,
+}: {
+  session: XRSession;
+  onPose?: (pose: Pose | null) => void;
+  children: (placing: boolean) => React.ReactNode;
+}) {
   const camera = useThree((s) => s.camera);
-  const requestAnchor = useRequestXRAnchor();
   const controller = useXRInputSourceState("controller", "right");
   const hand = useXRInputSourceState("hand", "right");
   const space = controller?.inputSource.targetRaySpace ?? hand?.inputSource.targetRaySpace;
   const [placed, setPlaced] = useState<Pose | null>(null);
-  const [anchor, setAnchor] = useState<XRAnchor | null>(null);
   const follower = useRef<THREE.Group>(null);
+  useEffect(() => onPose?.(placed), [placed, onPose]);
   const aim = useRef<Pose & { at: number }>({ position: new THREE.Vector3(), yaw: 0, at: 0 });
   const matrix = useMemo(() => new THREE.Matrix4(), []);
   const placing = placed === null;
@@ -125,27 +146,16 @@ function Placing({ session, children }: { session: XRSession; children: (placing
   // Trigger or pinch while placing puts it down.
   useEffect(() => {
     if (!placing) return;
-    const put = async () => {
+    const put = () => {
       const { position, yaw } = aim.current;
-      const pose = { position: position.clone(), yaw };
-      setPlaced(pose);
+      setPlaced({ position: position.clone(), yaw });
       pulse("detent");
-      const made = await requestAnchor({
-        relativeTo: "world",
-        worldPosition: pose.position,
-        worldQuaternion: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw),
-      }).catch(() => undefined);
-      if (made) setAnchor(made);
     };
     session.addEventListener("select", put);
     return () => session.removeEventListener("select", put);
-  }, [placing, session, requestAnchor]);
+  }, [placing, session]);
 
-  const pickUp = () => {
-    anchor?.delete();
-    setAnchor(null);
-    setPlaced(null);
-  };
+  const pickUp = () => setPlaced(null);
 
   if (placing) {
     return (
@@ -181,9 +191,7 @@ function Placing({ session, children }: { session: XRSession; children: (placing
       </group>
     </>
   );
-  return anchor ? (
-    <XRSpace space={anchor.anchorSpace}>{content}</XRSpace>
-  ) : (
+  return (
     <group position={placed.position} rotation={[0, placed.yaw, 0]}>
       {content}
     </group>

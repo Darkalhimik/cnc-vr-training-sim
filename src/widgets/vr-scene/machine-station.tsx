@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import type { GameMode } from "@/entities/machine/machine-types";
 import type { MachinePartId } from "@/entities/machine/machine-parts";
 import { useMachineStore } from "@/entities/machine/machine-store";
@@ -34,12 +34,10 @@ type Props = {
   /** The size and turn lectern: only where the machine is placed in the
    *  trainee's own room. In the workshop it stands in its bay at full size. */
   adjustable: boolean;
-  /** Parts respond to pointing. Off while a desktop walker passes by: a click
-   *  on the machine then means "go to it", not "press what is under the
-   *  cursor". */
+  /** Parts respond to pointing. Off while the machine's menu is closed on a
+   *  desktop: a click on the machine then opens the menu, it does not press
+   *  what is under the cursor. */
   interactive: boolean;
-  /** Fly the desktop camera to the full panel when it opens. */
-  focusPanel: boolean;
 };
 
 /**
@@ -48,7 +46,7 @@ type Props = {
  * pendant when open, and the boards that stand in for the side panel. The
  * workshop puts it in a bay; AR puts it on the trainee's floor.
  */
-export function MachineStation({ gameMode, boards, adjustable, interactive, focusPanel }: Props) {
+export function MachineStation({ gameMode, boards, adjustable, interactive }: Props) {
   const interactWithPart = useInteraction();
   const hoveredPart = useSessionStore((s) => s.hoveredPart);
   const hintsEnabled = useSessionStore((s) => s.hintsEnabled);
@@ -57,20 +55,8 @@ export function MachineStation({ gameMode, boards, adjustable, interactive, focu
   const machineYaw = useSessionStore((s) => s.machineYaw);
   const fullPanelOpen = useSessionStore((s) => s.fullPanelOpen);
   const setFullPanelOpen = useSessionStore((s) => s.setFullPanelOpen);
-  const focusNode = useSessionStore((s) => s.focusNode);
-  const focusCamera = useSessionStore((s) => s.focusCamera);
+  const touchPanel = useSessionStore((s) => s.touchPanel);
   const tutorialHighlights = useTutorialHighlights();
-
-  // Opening the full panel brings the desktop camera to it, and closing it
-  // brings the camera back to the machine's own pendant.
-  const panelWasOpen = useRef(fullPanelOpen);
-  useEffect(() => {
-    const wasOpen = panelWasOpen.current;
-    panelWasOpen.current = fullPanelOpen;
-    if (!focusPanel) return;
-    if (fullPanelOpen) focusNode("FullPanel_View");
-    else if (wasOpen) focusCamera("screen");
-  }, [fullPanelOpen, focusPanel, focusNode, focusCamera]);
 
   const highlightedParts = useMemo(() => {
     if (gameMode === "tutorial") return tutorialHighlights;
@@ -97,9 +83,16 @@ export function MachineStation({ gameMode, boards, adjustable, interactive, focu
       </group>
 
       {/* The full-size pendant stands to the right of the machine, turned
-          towards the operator. Unscaled: it is read, not inspected. */}
+          towards the operator. Unscaled: it is read, not inspected. Touching
+          it gives it the desktop keyboard (its keys stop the click itself,
+          not the pointer going down and up). */}
       {fullPanelOpen && (
-        <group position={[2.05, 1.32, 1.3]} rotation={[0, -0.55, 0]}>
+        <group
+          position={[2.05, 1.32, 1.3]}
+          rotation={[0, -0.55, 0]}
+          onPointerDown={(e) => touchPanel(e.nativeEvent.timeStamp)}
+          onPointerUp={(e) => touchPanel(e.nativeEvent.timeStamp)}
+        >
           <FullPendant3D
             onPartInteract={interactWithPart}
             onKey={(id, shift) => {

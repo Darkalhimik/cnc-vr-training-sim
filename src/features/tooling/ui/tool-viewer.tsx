@@ -32,12 +32,14 @@ function StudioReflections() {
 
 /** A mark under the tool at `y` along its axis: clear of the flange, which
  *  is the widest a CT40 holder gets short of a face mill. The stage is dark
- *  in either theme, so the marks are light. */
-function Label({ y, children }: { y: number; children: React.ReactNode }) {
+ *  in either theme, so the marks are light. `drop` hangs the text a line
+ *  lower, so neighbouring marks do not run into each other when the view is
+ *  narrow and the tool small. */
+function Label({ y, drop = false, children }: { y: number; drop?: boolean; children: React.ReactNode }) {
   return (
     <Html position={[-0.042, y, 0]} center={false} style={{ pointerEvents: "none" }} zIndexRange={[10, 0]}>
       <div className="flex flex-col items-start whitespace-nowrap font-mono text-[10px] text-zinc-300">
-        <span className="h-3 w-px bg-current opacity-60" />
+        <span className={cn("w-px bg-current opacity-60", drop ? "h-6" : "h-3")} />
         <span className="-translate-x-1/2">{children}</span>
       </div>
     </Html>
@@ -70,7 +72,9 @@ function ToolModel({ tool, exploded, labels }: { tool: LibraryTool; exploded: bo
       {labels && !exploded && (
         <>
           <Label y={0}>gauge line</Label>
-          <Label y={face}>holder face · {tool.length - tool.stickout} mm</Label>
+          <Label y={face} drop>
+            holder face · {tool.length - tool.stickout} mm
+          </Label>
           <Label y={tip}>tip · {tool.length} mm</Label>
         </>
       )}

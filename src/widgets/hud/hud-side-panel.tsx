@@ -18,7 +18,14 @@ import { TaskPanel } from "@/features/levels/ui/task-panel";
 import { HudMachineStatus } from "@/widgets/hud/hud-machine-status";
 import { HudTutorialTracker } from "@/widgets/hud/hud-tutorial-tracker";
 import type { MachineInfo } from "@/entities/catalog/machines";
-import { DEVICE_LABEL, isImmersive as immersive, type DeviceMode, type GameMode } from "@/entities/machine/machine-types";
+import {
+  DEVICE_LABEL,
+  DEVICE_MODES,
+  DEVICE_SHORT,
+  isImmersive as immersive,
+  type DeviceMode,
+  type GameMode,
+} from "@/entities/machine/machine-types";
 
 const GAME_MODE_TITLE: Record<GameMode, string> = {
   freeplay: "Free play",
@@ -26,12 +33,7 @@ const GAME_MODE_TITLE: Record<GameMode, string> = {
   task: "Task",
 };
 
-const deviceModeOptions: { value: DeviceMode; label: string }[] = [
-  { value: "desktop", label: "Desktop" },
-  { value: "vr", label: "VR" },
-  { value: "glasses", label: "Glasses" },
-  { value: "phone", label: "Phone" },
-];
+const deviceModeOptions = DEVICE_MODES.map((value) => ({ value, label: DEVICE_SHORT[value] }));
 
 /** One titled block of the panel. The panel owns the surface, so a section is
  *  a heading plus its body — never a card of its own. */
@@ -72,6 +74,9 @@ interface HudSidePanelProps {
   /** The machine can be sized and turned — not where it stands in a bay. */
   adjustable: boolean;
   className?: string;
+  /** Sections that come first: in AR, the menu that stands in for the
+   *  workshop (which machine, its tool cart, movement). */
+  children?: React.ReactNode;
 }
 
 /**
@@ -92,6 +97,7 @@ export function HudSidePanel({
   back,
   adjustable,
   className,
+  children,
 }: HudSidePanelProps) {
   const router = useRouter();
   const search = useSearchParams();
@@ -146,6 +152,8 @@ export function HudSidePanel({
           fill
         />
       </section>
+
+      {children}
 
       <Section title={gameMode === "freeplay" ? "Job" : GAME_MODE_TITLE[gameMode]}>
         {levelError && !level && <p className="text-xs text-amber-700 dark:text-amber-300">{levelError}</p>}
@@ -219,7 +227,7 @@ export function HudSidePanel({
             ) : (
               <p className="text-xs/relaxed text-muted-foreground">
                 {deviceMode === "vr"
-                  ? "Preview mode is active. Use Enter VR on a WebXR-capable headset."
+                  ? "Preview mode is active. Use Enter VR in WebXR-capable VR glasses."
                   : "Preview mode is active. Use Enter AR on a supported mobile device."}
               </p>
             )}

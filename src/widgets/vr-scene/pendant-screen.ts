@@ -1,4 +1,4 @@
-import { HOMING_SEQUENCE, TOOL_COLS, TOOL_ROWS, sortedPrograms } from "@/entities/machine/machine-logic";
+import { HOMING_SEQUENCE, TOOL_COLS, TOOL_ROWS, listFiles } from "@/entities/machine/machine-logic";
 import {
   AXES,
   MODE_STATUS,
@@ -91,7 +91,8 @@ export function screenKey(v: ScreenView): string {
     m.activeWorkOffset,
     m.workOffsets[m.activeWorkOffset],
     m.runSource,
-    m.display === "list" ? Object.keys(m.programs) : null,
+    m.display === "list" ? [m.listDevice, Object.keys(m.programs), Object.keys(m.usb ?? {})] : null,
+    m.display === "list" ? m.offsetCursor : null,
     m.doorOpen,
     v.message,
     m.homingStage !== null && v.blink,
@@ -242,6 +243,7 @@ function offsetPage(ctx: Ctx, m: MachineState, x: number, y: number, w: number, 
         cell(off[col].toFixed(3), x + 4 + cw * (ci + 2), ty, sel, cw);
       });
     }
+    text(ctx, "TOOL OFFSET MEASURE: in HANDLE JOG the touch-off, in MDI the WIPS tool setter.", x + 8, y + h - r * 0.6, r * 0.42, C.muted);
     return;
   }
   const heads = ["G CODE", ...AXES.map((a) => a.toUpperCase())];
@@ -255,22 +257,36 @@ function offsetPage(ctx: Ctx, m: MachineState, x: number, y: number, w: number, 
       cell(m.workOffsets[id][a].toFixed(3), x + 4 + cw * (ci + 2), ty, sel, cw);
     });
   });
-  text(ctx, "Type a value: F1 sets it, ENTER adds it. PART ZERO SET takes the machine position.", x + 8, y + h - r * 0.6, r * 0.42, C.muted);
+  text(ctx, "F1 sets a typed value, ENTER adds it. PART ZERO SET takes the machine position. F3: WIPS probe.", x + 8, y + h - r * 0.6, r * 0.42, C.muted);
 }
 
 function listPage(ctx: Ctx, m: MachineState, x: number, y: number, w: number, h: number, row: number) {
-  tabs(ctx, ["MEMORY", "USB", "NET SHARE"], 0, x, y, w, row);
+  const usb = m.listDevice === "usb";
+  tabs(ctx, ["MEMORY", m.usb ? "USB" : "USB (EMPTY)", "NET SHARE"], usb ? 1 : 0, x, y, w, row);
   box(ctx, x, y + row, w, h - row, C.pane);
-  sortedPrograms(m).forEach((name, i) => {
+  const files = usb ? (m.usb ?? {}) : m.programs;
+  const names = listFiles(m);
+  if (names.length === 0) text(ctx, usb ? "No programs on the stick." : "No programs.", x + 12, y + row * 1.6, row * 0.42, C.muted);
+  names.forEach((name, i) => {
     const ly = y + row * (1.6 + i * 0.85);
     const sel = m.offsetCursor.row === i;
     if (sel) box(ctx, x + 4, ly - row * 0.4, w - 8, row * 0.8, C.select);
     const color = sel ? C.selectText : C.text;
-    text(ctx, `${name === m.activeProgram ? "A " : "  "}${name}`, x + 12, ly, row * 0.5, color, { font: MONO, weight: 700 });
-    const title = /\(([^)]*)\)/.exec(m.programs[name])?.[1] ?? "";
+    const active = !usb && name === m.activeProgram;
+    text(ctx, `${active ? "* " : "  "}${name}`, x + 12, ly, row * 0.5, color, { font: MONO, weight: 700 });
+    const title = /\(([^)]*)\)/.exec(files[name])?.[1] ?? "";
     text(ctx, title, x + w * 0.35, ly, row * 0.42, color);
   });
-  text(ctx, "A = active. SELECT PROGRAM makes the highlighted one active.", x + 8, y + h - row * 0.5, row * 0.38, C.muted);
+  text(
+    ctx,
+    usb
+      ? "SELECT PROGRAM copies it to memory and makes it active. F2 copies only. LEFT: Memory."
+      : "* = active. SELECT PROGRAM makes the highlighted one active. RIGHT: USB.",
+    x + 8,
+    y + h - row * 0.5,
+    row * 0.38,
+    C.muted,
+  );
 }
 
 function commandsPage(ctx: Ctx, v: ScreenView, x: number, y: number, w: number, h: number, row: number) {

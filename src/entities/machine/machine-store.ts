@@ -30,10 +30,14 @@ type MachineStore = {
   /** For the scene's program runner: the `run*` actions of program-run.ts. */
   runAction: (action: RunAction) => void;
   crash: (text: string) => Outcome;
-  /** Put a program in control memory (from the workspace); `select` makes it
-   *  the active program. */
+  /** Put a program straight into control memory; `select` makes it the
+   *  active program. For setting up a level's start and for checks: a
+   *  trainee's program reaches the control on the USB stick (writeUsb) and is
+   *  loaded from LIST PROGRAM. */
   loadProgram: (name: string, text: string, select?: boolean) => Outcome;
-  /** Write offsets directly — the "probe it for me" shortcuts of setup. */
+  /** The office PC writes a program to the USB stick in the pendant's port. */
+  writeUsb: (name: string, text: string) => void;
+  /** Write offsets directly. For level starts and checks only. */
   setOffsets: (patch: Pick<Partial<MachineState>, "workOffsets" | "tools">) => void;
   /** Another set of tools in the changer: tool table, pocket table, the
    *  spindle's tool and the pocket at the arm (features/tooling). */
@@ -105,6 +109,11 @@ export const useMachineStore = create<MachineStore>((set, get) => {
       };
       set({ machine: next, message: `${name} loaded${select ? " and selected" : ""}.` });
       return { next };
+    },
+    writeUsb: (name, text) => {
+      const { machine } = get();
+      if (!machine.usb || machine.usb[name] === text) return;
+      set({ machine: { ...machine, usb: { ...machine.usb, [name]: text } } });
     },
     setOffsets: (patch) => set({ machine: { ...get().machine, ...patch } }),
     setMagazine: (patch) => set({ machine: { ...get().machine, ...patch }, message: "Tools loaded. Measure the new ones before cutting." }),

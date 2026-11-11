@@ -109,6 +109,31 @@
     @apply font-sans;
   }
 
+  /* A finger needs about 44 px to hit what it aims at. With a mouse the
+     controls stay dense (h-7); on a touch screen every control grows to a
+     finger's size. Links inside running text are inline and keep their size. */
+  @media (pointer: coarse) {
+    button,
+    a[href],
+    select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+      min-height: 2.75rem;
+    }
+    button,
+    a[href] {
+      min-width: 2.75rem;
+    }
+  }
+
+  /* A 2K-and-wider screen at 100 % scaling shows a 16 px root like a 12 px
+     one: everything sized in rem — type, spacing, the side panels, the page
+     column — grows a quarter with it. */
+  @media (min-width: 2200px) {
+    html {
+      font-size: 125%;
+    }
+  }
+
   body {
     @apply bg-background text-foreground;
   }

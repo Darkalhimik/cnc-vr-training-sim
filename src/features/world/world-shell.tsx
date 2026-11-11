@@ -10,20 +10,72 @@ import { useWarehouseStore } from "@/features/warehouse/warehouse-api";
 import { useGameMode, useLevelRuntime } from "@/features/levels/level-session";
 import { PartWorkspace } from "@/features/part-development/ui/workspace";
 import { useJobStore } from "@/features/part-development/job-store";
+import { useUsbStick } from "@/features/part-development/use-usb-stick";
 import { useSessionStore } from "@/features/session/session-store";
 import { usePendantKeyboard } from "@/features/session/use-pendant-keyboard";
 import { useToolingStore } from "@/features/tooling/tooling-store";
 import { useFreePlayTools } from "@/features/tooling/use-free-play-tools";
 import { useTutorialSync } from "@/features/tutorial/tutorial-store";
 import { useSession } from "@/shared/lib/auth-client";
+import { cn } from "@/shared/lib/cn";
+import { ChevronDownIcon, ChevronUpIcon } from "@/shared/ui/icons";
 import { ClientOnly } from "@/shared/ui/client-only";
 import { ProgramEditorOverlay } from "@/widgets/gcode-editor";
 import { HudNotification } from "@/widgets/hud/hud-notification";
 import { HudSidePanel } from "@/widgets/hud/hud-side-panel";
 import { ArScene } from "@/widgets/vr-scene/ar-scene";
 import { WorldScene } from "@/widgets/world/world-scene";
-import { ToolCartPanel, ToolboxPanel, WarehousePanel, WorldPanel } from "./world-panels";
+import { ArMenu, ToolCartPanel, ToolboxPanel, WarehousePanel, WorldPanel } from "./world-panels";
 import { WORLD, machineStation, useWorldStore } from "./world-store";
+
+/**
+ * What the keys and the mouse do right now, over the stage: the station under
+ * the pointer and what a click on it does, and whether the keyboard walks or
+ * types into the full panel.
+ */
+function DesktopHints() {
+  const hovered = useWorldStore((s) => (s.hovered ? stationById(WORLD, s.hovered) : null));
+  const menuOpen = useWorldStore((s) => s.view.kind === "station");
+  const typing = useSessionStore((s) => s.fullPanelOpen && s.panelKeyboard);
+  const crouching = useWorldStore((s) => s.crouching);
+  const chip = "rounded-md bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur";
+  return (
+    <>
+      {hovered && (
+        <p className={cn(chip, "pointer-events-none absolute bottom-14 left-1/2 z-10 -translate-x-1/2 text-foreground")}>
+          {hovered.label} · click to use
+        </p>
+      )}
+      {/* Keys and a mouse: no use reading about them on a phone. */}
+      <p className={cn(chip, "pointer-events-none absolute bottom-4 left-4 z-10 max-md:hidden")}>
+        {typing
+          ? "The keyboard types into the control · Esc or a click elsewhere to walk again"
+          : `${crouching ? "Crouching: tap Ctrl to stand · " : ""}WASD to walk · Shift to run · Ctrl to crouch · drag to look · wheel to zoom · click a machine or station to use it${menuOpen ? " · Esc closes its menu" : ""}`}
+      </p>
+    </>
+  );
+}
+
+/**
+ * Why an XR session cannot start here, in words the trainee can act on —
+ * or null when it can. Browsers give WebXR only to secure pages (https, or
+ * localhost): opened over http by the laptop's address, even a Quest's own
+ * browser has no navigator.xr at all.
+ */
+async function whyNoXr(mode: "immersive-vr" | "immersive-ar"): Promise<string | null> {
+  if (!window.isSecureContext) {
+    return `WebXR works only on secure pages. Open https://${window.location.host}${window.location.pathname} — this page came over http.`;
+  }
+  const xr = (navigator as Navigator & { xr?: XRSystem }).xr;
+  if (!xr) return "This browser has no WebXR. Open the page in the glasses' own browser (Meta Quest Browser) or in Chrome on a phone.";
+  const supported = await xr.isSessionSupported(mode).catch(() => false);
+  if (!supported) {
+    return mode === "immersive-vr"
+      ? "This device does not offer VR sessions."
+      : "This device does not offer AR (passthrough) sessions.";
+  }
+  return null;
+}
 
 type Props = {
   device: DeviceMode;
@@ -49,6 +101,8 @@ export function WorldShell({ device, levelId, at }: Props) {
   const loadTooling = useToolingStore((s) => s.load);
   const [xrError, setXrError] = useState<string | null>(null);
   const [xrSessionInfo, setXrSessionInfo] = useState<string | null>(null);
+  /** On a phone the panel can be folded away under the stage. */
+  const [panelOpen, setPanelOpen] = useState(true);
 
   // The headset gets the teleport arc on its controllers and hands; hands
   // poke and pinch by default. `emulate: false` because @pmndrs/xr otherwise
@@ -73,10 +127,22 @@ export function WorldShell({ device, levelId, at }: Props) {
     const asked = at === "cabinet" ? "warehouse" : at;
     const stationId = asked && stationById(WORLD, asked) ? asked : (level && machineStation(level.machineId)?.id) || null;
     const station = stationId ? stationById(WORLD, stationId) : null;
+    // AR has no workshop: the station's (or level's) machine is the one out.
+    const machineId = station?.machineId ?? level?.machineId;
+    if (machineId) useWorldStore.getState().setArMachine(machineId);
     if (!station) return;
     const arrive = useWorldStore.getState().arrive;
     arrive(station.id);
   });
+
+  // Movement in the glasses: the teleport arc only when teleporting.
+  const xrMovement = useSessionStore((s) => s.xrMovement);
+  useEffect(() => useSessionStore.getState().loadXrMovement(), []);
+  useEffect(() => {
+    const teleportPointer = xrMovement === "teleport";
+    xrStore.setController({ teleportPointer });
+    xrStore.setHand({ teleportPointer });
+  }, [xrStore, xrMovement]);
 
   useLevelRuntime(level ? level.kind : "freeplay", level?.id ?? null);
   const gameMode = useGameMode();
@@ -85,8 +151,10 @@ export function WorldShell({ device, levelId, at }: Props) {
   const view = useWorldStore((s) => s.view);
   const station = view.kind === "station" ? stationById(WORLD, view.id) : null;
   const atMachine = station?.kind === "machine";
-  const machine = machineById(station?.machineId ?? level?.machineId ?? MACHINES[0].id) ?? MACHINES[0];
   const passthrough = device === "glasses" || device === "phone";
+  const arMachineId = useWorldStore((s) => s.arMachineId);
+  const machine =
+    machineById(passthrough ? arMachineId : (station?.machineId ?? level?.machineId ?? MACHINES[0].id)) ?? MACHINES[0];
   usePendantKeyboard(device === "desktop" && (atMachine || passthrough));
 
   useEffect(() => {
@@ -102,21 +170,27 @@ export function WorldShell({ device, levelId, at }: Props) {
     void loadTooling(data?.user.id ?? null);
   }, [data?.user.id, isPending, loadWarehouse, loadTooling]);
   useFreePlayTools(machine.id, gameMode === "freeplay");
+  useUsbStick();
 
   const workspaceOpen = useJobStore((s) => s.workspaceOpen);
   const showWorkspace = device === "desktop" && atMachine && gameMode !== "tutorial" && workspaceOpen;
 
   const enterImmersive = async () => {
+    setXrError(null);
+    const blocked = await whyNoXr(device === "vr" ? "immersive-vr" : "immersive-ar");
+    if (blocked) return setXrError(blocked);
     try {
-      setXrError(null);
       if (device === "vr") await xrStore.enterVR();
       else await xrStore.enterAR();
-    } catch {
-      setXrError("A WebXR session could not start on this device.");
+    } catch (error) {
+      const reason = error instanceof Error && error.message ? ` (${error.message})` : "";
+      setXrError(`The ${device === "vr" ? "VR" : "AR"} session did not start${reason}.`);
     }
   };
 
-  const panelClass = "w-80 shrink-0";
+  // The panel fills its slot: a column from md up, the lower part of the
+  // screen on a phone (see the layout below).
+  const panelClass = "min-h-0 w-full flex-1 max-md:border-l-0";
   let panel: React.ReactNode;
   if (passthrough) {
     panel = (
@@ -130,7 +204,9 @@ export function WorldShell({ device, levelId, at }: Props) {
         back={{ label: "Levels", href: `/machines/${machine.slug}/levels` }}
         adjustable
         className={panelClass}
-      />
+      >
+        <ArMenu device={device} />
+      </HudSidePanel>
     );
   } else if (device === "desktop" && atMachine) {
     panel = (
@@ -157,8 +233,11 @@ export function WorldShell({ device, levelId, at }: Props) {
   }
 
   return (
-    <div className="flex h-dvh w-screen overflow-hidden">
-      <div className="relative min-w-0 flex-1 bg-stage">
+    // From md up the panel is a column beside the stage. On a phone it sits
+    // under the stage instead — beside it, it would leave the machine a
+    // sliver — and folds away to give the stage the whole screen.
+    <div className="flex h-dvh w-screen flex-col overflow-hidden md:flex-row">
+      <div className="relative min-h-0 min-w-0 flex-1 bg-stage">
         <ClientOnly>
           {passthrough ? (
             <ArScene mode={device} gameMode={gameMode} xrStore={xrStore} onSessionInfo={setXrSessionInfo} />
@@ -175,19 +254,36 @@ export function WorldShell({ device, levelId, at }: Props) {
           </div>
         )}
 
-        {device === "desktop" && view.kind === "walk" && (
-          <p className="pointer-events-none absolute bottom-4 left-4 z-10 rounded-md bg-background/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur">
-            WASD to walk · drag to look · click a station to go to it
-          </p>
-        )}
+        {device === "desktop" && <DesktopHints />}
 
         <div className="pointer-events-none absolute bottom-4 right-4 z-20">
           <div className="pointer-events-auto">
             <HudNotification />
           </div>
         </div>
+
+        {!panelOpen && (
+          <button
+            type="button"
+            onClick={() => setPanelOpen(true)}
+            className="absolute bottom-3 left-1/2 z-20 inline-flex h-9 -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background/90 px-4 text-xs font-medium shadow-sm backdrop-blur md:hidden"
+          >
+            <ChevronUpIcon />
+            Show panel
+          </button>
+        )}
       </div>
-      {panel}
+      <div className={cn("flex min-h-0 shrink-0 flex-col md:w-80", panelOpen ? "max-md:h-[45dvh]" : "max-md:hidden")}>
+        <button
+          type="button"
+          onClick={() => setPanelOpen(false)}
+          className="flex h-8 shrink-0 items-center justify-center gap-1.5 border-t bg-background text-xs text-muted-foreground md:hidden"
+        >
+          <ChevronDownIcon />
+          Hide panel
+        </button>
+        {panel}
+      </div>
       <ProgramEditorOverlay />
     </div>
   );

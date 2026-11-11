@@ -9,6 +9,7 @@ import { useRigRegistry } from "@/widgets/vr-scene/rig-registry";
 import { useSessionStore } from "@/features/session/session-store";
 import { useTutorialKeys } from "@/features/tutorial/tutorial-store";
 import { pulseFrom } from "@/features/xr/haptics";
+import { isDragClick } from "@/shared/lib/pointer";
 import { screenView } from "@/widgets/vr-scene/machine-rig";
 import { drawPendantScreen, screenKey } from "@/widgets/vr-scene/pendant-screen";
 import { CANVAS_H, CANVAS_W, paintKeypad } from "./keypad-painter";
@@ -69,6 +70,7 @@ function PushButton({
         position={[0, 0, 0.011]}
         onClick={(e) => {
           e.stopPropagation();
+          if (isDragClick(e)) return;
           onPress();
         }}
       >
@@ -168,6 +170,7 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
       <mesh
         onClick={(e) => {
           e.stopPropagation();
+          if (isDragClick(e)) return;
           const key = pointerKey(e);
           if (!key) return;
           pulseFrom(e, "tap");
@@ -223,6 +226,7 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
             position={[0, 0, 0.012]}
             onClick={(e) => {
               e.stopPropagation();
+              if (isDragClick(e)) return;
               press("estop");
             }}
           >
@@ -239,6 +243,7 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
             rotation={[Math.PI / 2, 0, 0]}
             onClick={(e) => {
               e.stopPropagation();
+              if (isDragClick(e)) return;
               // Read the side in the panel's frame: the wheel itself turns.
               const local = wheelBase.current!.worldToLocal(e.point.clone());
               const sign: 1 | -1 = local.x >= 0 ? 1 : -1;
@@ -268,6 +273,7 @@ export function FullPendant3D({ onPartInteract, onKey, onUnhandledKey, onClose }
           rotation={[Math.PI / 2, 0, 0]}
           onClick={(e) => {
             e.stopPropagation();
+            if (isDragClick(e)) return;
             onUnhandledKey(c.label.replace(/\n/g, " "));
           }}
         >

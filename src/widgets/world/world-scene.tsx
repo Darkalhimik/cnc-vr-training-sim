@@ -1,16 +1,19 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { XR, type createXRStore } from "@react-three/xr";
 import type * as THREE from "three";
 import type { GameMode } from "@/entities/machine/machine-types";
 import type { Station } from "@/entities/world/layout";
+import { useSessionStore } from "@/features/session/session-store";
 import { useWarehouseStore } from "@/features/warehouse/warehouse-api";
 import { WORLD, useWorldStore } from "@/features/world/world-store";
+import { isDragClick } from "@/shared/lib/pointer";
 import { CabinetDisplay } from "@/widgets/warehouse-scene/warehouse-scene";
 import { ToolCart, ToolCrib } from "@/widgets/tooling/tool-racks";
 import { MachineStation } from "@/widgets/vr-scene/machine-station";
+import { WristMenu } from "@/widgets/vr-scene/wrist-menu";
 import { DesktopNavigator } from "./desktop-navigator";
 import { LevelTerminal, ProgressWall } from "./lobby-boards";
 import { Rooms } from "./rooms";
@@ -34,34 +37,62 @@ function StationFrame({ station, children }: { station: Station; children: React
   );
 }
 
-/** On a desktop, a click on a station from across the room walks to it. */
-function useWalkTo(station: Station, desktop: boolean) {
-  const view = useWorldStore((s) => s.view);
-  const goTo = useWorldStore((s) => s.goTo);
-  const here = view.kind === "station" && view.id === station.id;
-  const onClick =
-    desktop && !here
-      ? (event: ThreeEvent<MouseEvent>) => {
-          event.stopPropagation();
-          goTo(station.id);
-        }
-      : undefined;
-  return { here, onClick };
+/** Whether this station's menu is open. */
+const useHere = (station: Station) =>
+  useWorldStore((s) => s.view.kind === "station" && s.view.id === station.id);
+
+/** How tall each kind of station stands, for its hit box, m. */
+const HIT_HEIGHT: Partial<Record<Station["kind"], number>> = { machine: 2.8, warehouse: 2.15, toolbox: 2, toolcart: 1.2 };
+
+/**
+ * On a desktop, while a station's menu is closed, an invisible box over it
+ * takes the pointer: hovering names it, a click opens its menu where the
+ * player stands. Nothing under the box answers until then — so a click never
+ * presses a control by surprise — and a box is cheap to hit-test on every
+ * pointer move, where a 240k-triangle machine is not.
+ */
+function StationHitBox({ station }: { station: Station }) {
+  const interact = useWorldStore((s) => s.interact);
+  const setHovered = useWorldStore((s) => s.setHovered);
+  if (!station.footprint) return null;
+  // The footprint is turned into the world; the box is in the station's frame.
+  const quarter = Math.round(station.yaw / (Math.PI / 2)) % 2 !== 0;
+  const w = station.footprint.max[0] - station.footprint.min[0];
+  const d = station.footprint.max[1] - station.footprint.min[1];
+  const [x, z] = quarter ? [d, w] : [w, d];
+  const h = HIT_HEIGHT[station.kind] ?? 2;
+  return (
+    <mesh
+      position={[0, h / 2, 0]}
+      onClick={(e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        if (isDragClick(e)) return;
+        interact(station.id);
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(station.id);
+      }}
+      onPointerOut={() => {
+        if (useWorldStore.getState().hovered === station.id) setHovered(null);
+      }}
+    >
+      <boxGeometry args={[x + 0.1, h, z + 0.1]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
 }
 
 function MachineBay({ station, desktop, gameMode }: { station: Station; desktop: boolean; gameMode: GameMode }) {
-  const { here, onClick } = useWalkTo(station, desktop);
+  const here = useHere(station);
+  // The full panel belongs to the machine's menu: it goes when the menu does.
+  useEffect(() => {
+    if (desktop && !here && useSessionStore.getState().fullPanelOpen) useSessionStore.getState().setFullPanelOpen(false);
+  }, [desktop, here]);
   return (
     <StationFrame station={station}>
-      <group onClick={onClick}>
-        <MachineStation
-          gameMode={gameMode}
-          boards={!desktop}
-          adjustable={false}
-          interactive={!desktop || here}
-          focusPanel={desktop && here}
-        />
-      </group>
+      <MachineStation gameMode={gameMode} boards={!desktop} adjustable={false} interactive={!desktop || here} />
+      {desktop && !here && <StationHitBox station={station} />}
     </StationFrame>
   );
 }
@@ -70,42 +101,29 @@ function WarehouseCorner({ station, desktop }: { station: Station; desktop: bool
   const parts = useWarehouseStore((s) => s.parts);
   const selected = useWorldStore((s) => s.selectedPart);
   const selectPart = useWorldStore((s) => s.selectPart);
-  const { here, onClick } = useWalkTo(station, desktop);
+  const here = useHere(station);
   return (
     <StationFrame station={station}>
-      <group onClick={onClick}>
-        <CabinetDisplay
-          parts={parts}
-          selected={selected}
-          onSelect={(id) => {
-            // From across the room, a click on a part walks to the cabinet first.
-            if (desktop && !here) useWorldStore.getState().goTo(station.id);
-            selectPart(id === selected ? null : id);
-          }}
-        />
-      </group>
+      <CabinetDisplay parts={parts} selected={selected} onSelect={(id) => selectPart(id === selected ? null : id)} />
+      {desktop && !here && <StationHitBox station={station} />}
     </StationFrame>
   );
 }
 
-/** The tool crib and the machines' carts: a click on a tool walks there and
- *  picks it (on a desktop), so the panel can show it. */
+/** The tool crib and the machines' carts: with the menu open, a click on a
+ *  tool picks it, so the panel can show it. */
 function ToolStation({ station, desktop }: { station: Station; desktop: boolean }) {
   const selected = useWorldStore((s) => s.selectedTool);
-  const { here, onClick } = useWalkTo(station, desktop);
-  const pick = (id: string) => {
-    if (desktop && !here) useWorldStore.getState().goTo(station.id);
-    useWorldStore.getState().selectTool(id === selected ? null : id);
-  };
+  const here = useHere(station);
+  const pick = (id: string) => useWorldStore.getState().selectTool(id === selected ? null : id);
   return (
     <StationFrame station={station}>
-      <group onClick={onClick}>
-        {station.kind === "toolcart" && station.machineId ? (
-          <ToolCart machineId={station.machineId} selected={here || !desktop ? selected : null} onSelect={pick} />
-        ) : (
-          <ToolCrib selected={here || !desktop ? selected : null} onSelect={pick} />
-        )}
-      </group>
+      {station.kind === "toolcart" && station.machineId ? (
+        <ToolCart machineId={station.machineId} selected={here || !desktop ? selected : null} onSelect={pick} />
+      ) : (
+        <ToolCrib selected={here || !desktop ? selected : null} onSelect={pick} />
+      )}
+      {desktop && !here && <StationHitBox station={station} />}
     </StationFrame>
   );
 }
@@ -118,9 +136,11 @@ function TeleportFloors({ originRef }: { originRef: React.RefObject<THREE.Group 
 
 /**
  * The workshop: rooms, the machines in their bays with their tool carts, the
- * warehouse, the tool crib, the level terminal and the progress wall. A desktop walks it with the keyboard and
- * mouse; a VR headset walks, teleports and turns. AR glasses and phones see
- * only the machine (ArScene) — their own room is the setting.
+ * warehouse, the tool crib, the level terminal and the progress wall. On a
+ * desktop the player walks it with the keyboard and mouse and uses a station
+ * through its menu; a VR headset walks, teleports and turns, and uses
+ * everything in reach. AR glasses and phones see only the machine (ArScene)
+ * — their own room is the setting.
  */
 export function WorldScene({ device, gameMode, xrStore }: Props) {
   const desktop = device === "desktop";
@@ -179,7 +199,9 @@ export function WorldScene({ device, gameMode, xrStore }: Props) {
             <DesktopNavigator />
           ) : (
             <>
-              <PlayerOrigin originRef={originRef} />
+              <PlayerOrigin originRef={originRef}>
+                <WristMenu />
+              </PlayerOrigin>
               <VrLocomotion originRef={originRef} />
               <PreviewCamera originRef={originRef} />
               <HapticsBridge />

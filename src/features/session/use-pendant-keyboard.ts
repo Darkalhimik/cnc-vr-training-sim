@@ -47,9 +47,9 @@ function keyFor(event: KeyboardEvent): [string, boolean] | null {
 }
 
 /**
- * With the full panel open on a desktop, the computer keyboard types into the
- * NGC's input line the way the pendant's keys do — G00 X0 Y0 is fourteen
- * clicks otherwise. Enter is the control's ENTER (which in MDI inserts the
+ * With the full panel open (and, in the workshop, holding the keyboard), the
+ * computer keyboard types into the NGC's input line the way the pendant's keys
+ * do — G00 X0 Y0 is fourteen clicks otherwise. Enter is the control's ENTER (which in MDI inserts the
  * block), Backspace its CANCEL. Anything typed into a text field, or while the
  * program editor is open, is left alone.
  */
@@ -58,7 +58,10 @@ export function usePendantKeyboard(enabled: boolean) {
     if (!enabled) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
-      if (!useSessionStore.getState().fullPanelOpen || useProgramEditor.getState().isOpen) return;
+      const { fullPanelOpen, panelKeyboard, deviceMode } = useSessionStore.getState();
+      // On a desktop the keys also walk: the panel has them only while it has
+      // the keyboard (opened or clicked, until Esc or a click elsewhere).
+      if (!fullPanelOpen || (deviceMode === "desktop" && !panelKeyboard) || useProgramEditor.getState().isOpen) return;
       const target = event.target as HTMLElement | null;
       if (target instanceof Element && target.closest("input, textarea, select, [contenteditable=true], .cm-editor")) return;
       const mapped = keyFor(event);

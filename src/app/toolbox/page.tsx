@@ -52,7 +52,9 @@ export default function ToolboxPage() {
     <div className="flex h-dvh flex-col">
       <AppHeader crumbs={[{ label: "Toolbox" }]} />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className="relative min-h-[40vh] flex-1 bg-stage">
+        {/* Below lg the viewer keeps the top of the screen and the details
+            and the list scroll under it, so a tool picked is seen at once. */}
+        <section className="relative h-[38dvh] shrink-0 bg-stage lg:h-auto lg:min-h-0 lg:flex-1">
           <ToolViewer tool={shown} exploded={exploded} className="absolute inset-0 rounded-none" />
           <div className="pointer-events-none absolute inset-x-4 top-4 flex items-start justify-between gap-3">
             <p className="rounded-md bg-background/85 px-3 py-1.5 text-sm font-medium backdrop-blur">{tool.name}</p>
@@ -63,11 +65,12 @@ export default function ToolboxPage() {
           <p className="pointer-events-none absolute bottom-3 left-4 text-xs text-muted-foreground">Drag to turn · scroll to zoom</p>
         </section>
 
-        <aside className="w-full shrink-0 overflow-y-auto border-t bg-background p-4 lg:w-80 lg:border-l lg:border-t-0">
+        <div className="min-h-0 flex-1 overflow-y-auto lg:contents">
+        <aside className="w-full shrink-0 border-t bg-background p-4 lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <ToolDetails tool={tool} machines={MACHINES} viewer={false} />
         </aside>
 
-        <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-t bg-background lg:w-80 lg:border-l lg:border-t-0">
+        <aside className="flex w-full shrink-0 flex-col border-t bg-background lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <div className="space-y-2 p-4 pb-2">
             <h1 className="text-lg font-semibold tracking-tight">Toolbox</h1>
             <SegmentedControl
@@ -88,6 +91,7 @@ export default function ToolboxPage() {
             )}
           </div>
         </aside>
+        </div>
       </div>
       <ToastContainer className="fixed bottom-4 right-4 z-50" />
     </div>

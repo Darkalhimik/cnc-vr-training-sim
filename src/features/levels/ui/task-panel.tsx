@@ -42,7 +42,7 @@ export function TaskPanel() {
   const crashed = machine.alarms.some((a) => a.code === "crash");
   const status = [
     { label: "Program written", done: program !== task.template },
-    { label: `${name} sent to the control`, done: sent },
+    { label: `${name} loaded from USB and selected (LIST PROGRAM)`, done: sent },
     { label: "Run to M30", done: ran },
   ];
 

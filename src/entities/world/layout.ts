@@ -298,21 +298,57 @@ export function buildWorld(machines: Pick<MachineInfo, "id" | "name" | "maker" |
 
 export const stationById = (layout: WorldLayout, id: string) => layout.stations.find((s) => s.id === id) ?? null;
 
+/** A walker's radius, metres. */
+export const WALKER_RADIUS = 0.3;
+
+/** Whether a walker of radius `r` standing at `p` overlaps a wall or a footprint. */
+export function isBlocked(layout: WorldLayout, p: Vec2, r = WALKER_RADIUS) {
+  return (
+    layout.colliders.walls.some(([a, b]) => distanceToSegment(p, a, b) < r) ||
+    layout.colliders.rects.some((q) => p[0] > q.min[0] - r && p[0] < q.max[0] + r && p[1] > q.min[1] - r && p[1] < q.max[1] + r)
+  );
+}
+
 /**
  * Moves a walker of radius `r` from `from` by `step`, sliding along whatever
  * it meets rather than stopping dead — the desktop walk and VR thumbstick
  * movement both use it.
  */
-export function slide(layout: WorldLayout, from: Vec2, step: Vec2, r = 0.3): Vec2 {
-  const blocked = (p: Vec2) =>
-    layout.colliders.walls.some(([a, b]) => distanceToSegment(p, a, b) < r) ||
-    layout.colliders.rects.some((q) => p[0] > q.min[0] - r && p[0] < q.max[0] + r && p[1] > q.min[1] - r && p[1] < q.max[1] + r);
+export function slide(layout: WorldLayout, from: Vec2, step: Vec2, r = WALKER_RADIUS): Vec2 {
+  const blocked = (p: Vec2) => isBlocked(layout, p, r);
   const full: Vec2 = [from[0] + step[0], from[1] + step[1]];
   if (!blocked(full)) return full;
   const alongX: Vec2 = [from[0] + step[0], from[1]];
   if (!blocked(alongX)) return alongX;
   const alongZ: Vec2 = [from[0], from[1] + step[1]];
   if (!blocked(alongZ)) return alongZ;
+  return from;
+}
+
+/** A box on the floor: centre, turn about +Y (as three.js turns), half sizes
+ *  along its own x and z. */
+export type FloorBox = { center: Vec2; yaw: number; half: Vec2 };
+
+/**
+ * `slide` for an open floor with one box on it, or none: AR, where the room
+ * is the trainee's own and only the machine is in the way. A walker that
+ * starts inside the box (it grew round them, or was put down on them) walks
+ * out freely.
+ */
+export function slideAround(box: FloorBox | null, from: Vec2, step: Vec2, r = WALKER_RADIUS): Vec2 {
+  const full: Vec2 = [from[0] + step[0], from[1] + step[1]];
+  if (!box) return full;
+  const [c, s] = [Math.cos(box.yaw), Math.sin(box.yaw)];
+  // Into the box's own frame: three's rotation.y = yaw, undone.
+  const inside = (p: Vec2) => {
+    const [dx, dz] = [p[0] - box.center[0], p[1] - box.center[1]];
+    return Math.abs(dx * c - dz * s) < box.half[0] + r && Math.abs(dx * s + dz * c) < box.half[1] + r;
+  };
+  if (inside(from) || !inside(full)) return full;
+  const alongX: Vec2 = [from[0] + step[0], from[1]];
+  if (!inside(alongX)) return alongX;
+  const alongZ: Vec2 = [from[0], from[1] + step[1]];
+  if (!inside(alongZ)) return alongZ;
   return from;
 }
 

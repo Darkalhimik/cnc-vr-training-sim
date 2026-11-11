@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { XR_MOVEMENTS, useSessionStore, type XrMovement } from "@/features/session/session-store";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MACHINES, machineById } from "@/entities/catalog/machines";
 import { assemblyById } from "@/entities/tooling/catalog";
-import { DEVICE_LABEL, DEVICE_MODES, type DeviceMode } from "@/entities/machine/machine-types";
+import { DEVICE_LABEL, DEVICE_MODES, DEVICE_SHORT, type DeviceMode } from "@/entities/machine/machine-types";
 import { roomAt } from "@/entities/world/layout";
 import { useWarehouseStore } from "@/features/warehouse/warehouse-api";
 import { PartInspector, partSize } from "@/features/warehouse/part-inspector";
@@ -30,7 +32,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const DEVICE_SHORT: Record<DeviceMode, string> = { desktop: "Desktop", vr: "VR", glasses: "Glasses", phone: "Phone" };
 
 function DeviceSwitch({ device }: { device: DeviceMode }) {
   const router = useRouter();
@@ -51,16 +52,20 @@ function Controls({ device }: { device: DeviceMode }) {
     device === "desktop"
       ? [
           ["W A S D", "walk"],
-          ["Drag", "look around"],
           ["Shift", "run"],
-          ["Click", "go to a machine, the warehouse, the tool crib or the terminal"],
-          ["Esc", "step back from a station"],
+          ["Ctrl", "tap to crouch, tap again to stand up"],
+          ["← →", "turn"],
+          ["Drag", "look around"],
+          ["Wheel", "zoom in on a small control"],
+          ["Click", "use a machine, the warehouse or a tool rack: its menu opens where you stand"],
+          ["Esc", "close the menu"],
         ]
       : [
-          ["Walk", "your own room moves you too"],
-          ["Left stick", "move"],
-          ["Right stick", "turn"],
-          ["Teleport", "point at the floor, pull and release"],
+          ["Walk", "your own room moves you, in every movement mode"],
+          ["Teleport", "point at the floor, pull the trigger (Teleport mode)"],
+          ["Left stick", "walk (Joystick mode)"],
+          ["Right stick", "turn in steps (Teleport and Joystick)"],
+          ["Left wrist", "movement mode, and in AR the machine"],
           ["Trigger / pinch", "press buttons and keys"],
         ];
   return (
@@ -125,7 +130,7 @@ export function WorldPanel({
       </section>
 
       {device === "vr" && (
-        <Section title="Headset">
+        <Section title="VR glasses">
           <Button size="lg" className="w-full" onClick={onEnterImmersive}>
             Enter VR
           </Button>
@@ -133,13 +138,19 @@ export function WorldPanel({
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{xrError}</p>
           ) : (
             <p className="text-xs/relaxed text-muted-foreground">
-              Open this page in the headset&apos;s browser and press Enter VR. Here you see a preview.
+              Open this page in the VR glasses&apos; browser and press Enter VR. Here you see a preview.
             </p>
           )}
         </Section>
       )}
 
-      <Section title="Go to">
+      {device === "vr" && (
+        <Section title="Movement">
+          <MovementSwitch />
+        </Section>
+      )}
+
+      <Section title="Walk to">
         <ul className="grid gap-1">
           {stations.map((s) => (
             <li key={s.id}>
@@ -163,7 +174,7 @@ export function WorldPanel({
   );
 }
 
-/** Standing at the warehouse on a desktop: the shelves as a list, and the part picked. */
+/** The warehouse's menu on a desktop: the shelves as a list, and the part picked. */
 export function WarehousePanel({ className }: { className?: string }) {
   const parts = useWarehouseStore((s) => s.parts);
   const limit = useWarehouseStore((s) => s.limit);
@@ -241,7 +252,7 @@ function StationHeader({ onLeave }: { onLeave: () => void }) {
   );
 }
 
-/** Standing at the tool crib: every tool the shop has, and the one picked —
+/** The tool crib's menu: every tool the shop has, and the one picked —
  *  its close-up, its holder and cutter, and where it is loaded. */
 export function ToolboxPanel({ className }: { className?: string }) {
   const selected = useWorldStore((s) => s.selectedTool);
@@ -272,24 +283,111 @@ export function ToolboxPanel({ className }: { className?: string }) {
   );
 }
 
-/** Standing at a machine's tool cart: its tool table to set up, and the
- *  tool picked on the cart or in the table. */
-export function ToolCartPanel({ machineId, className }: { machineId: string; className?: string }) {
+/** A machine's tool cart: its tool table to set up, and the tool picked on
+ *  the cart or in the table. */
+function ToolCartContent({ machineId }: { machineId: string }) {
   const machine = machineById(machineId) ?? MACHINES[0];
   const selected = useWorldStore((s) => s.selectedTool);
   const selectTool = useWorldStore((s) => s.selectTool);
-  const leave = useWorldStore((s) => s.leave);
   const tool = selected ? assemblyById(selected) : null;
+  return tool ? (
+    <ToolDetails tool={tool} machines={[machine]} onClose={() => selectTool(null)} />
+  ) : (
+    <LoadoutEditor machine={machine} selected={selected} onInspect={selectTool} />
+  );
+}
+
+/** The tool cart's menu in the workshop. */
+export function ToolCartPanel({ machineId, className }: { machineId: string; className?: string }) {
+  const leave = useWorldStore((s) => s.leave);
   return (
     <aside className={cn("flex min-w-0 flex-col overflow-y-auto border-l bg-background", className)}>
       <StationHeader onLeave={leave} />
       <div className="border-t p-3">
-        {tool ? (
-          <ToolDetails tool={tool} machines={[machine]} onClose={() => selectTool(null)} />
-        ) : (
-          <LoadoutEditor machine={machine} selected={selected} onInspect={selectTool} />
-        )}
+        <ToolCartContent machineId={machineId} />
       </div>
     </aside>
+  );
+}
+
+/** Teleport, walk or joystick, for VR and AR glasses. */
+function MovementSwitch() {
+  const movement = useSessionStore((s) => s.xrMovement);
+  const setMovement = useSessionStore((s) => s.setXrMovement);
+  const help: Record<XrMovement, string> = {
+    teleport: "Point at the floor and pull the trigger to jump there. The right stick turns.",
+    walk: "Only your own steps move you. Turn by turning round.",
+    joystick: "The left stick walks you, the right stick turns; the trigger presses what the ray points at.",
+  };
+  return (
+    <div className="space-y-2">
+      <SegmentedControl options={XR_MOVEMENTS} value={movement} onChange={setMovement} fill />
+      <p className="text-xs/relaxed text-muted-foreground">
+        {help[movement]} In the glasses the same choice is on your left wrist.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * AR glasses and phones have no workshop: this menu stands in for it. Which
+ * machine is out (only the UMC-500 runs today; the others are listed for
+ * when they do), that machine's tool cart, and — in the glasses — how to
+ * get about.
+ */
+export function ArMenu({ device }: { device: DeviceMode }) {
+  const arMachineId = useWorldStore((s) => s.arMachineId);
+  const setArMachine = useWorldStore((s) => s.setArMachine);
+  const [cartOpen, setCartOpen] = useState(false);
+  return (
+    <>
+      <Section title="Machine">
+        <ul className="grid gap-1">
+          {MACHINES.map((m) => {
+            const runs = m.id === "umc500";
+            return (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  disabled={!runs}
+                  onClick={() => setArMachine(m.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent disabled:opacity-50",
+                    m.id === arMachineId && "bg-accent font-medium",
+                  )}
+                >
+                  <span>
+                    {m.maker} {m.name}
+                  </span>
+                  {!runs && <span className="text-[10px] text-muted-foreground">soon</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+      <Section title="Tool cart">
+        {cartOpen ? (
+          <div className="space-y-2">
+            <ToolCartContent machineId={arMachineId} />
+            <Button size="sm" variant="ghost" onClick={() => setCartOpen(false)}>
+              Close the cart
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <p className="min-w-0 flex-1 text-xs/relaxed text-muted-foreground">Load and unload this machine&apos;s tools.</p>
+            <Button size="md" variant="secondary" onClick={() => setCartOpen(true)}>
+              Open
+            </Button>
+          </div>
+        )}
+      </Section>
+      {device === "glasses" && (
+        <Section title="Movement">
+          <MovementSwitch />
+        </Section>
+      )}
+    </>
   );
 }
