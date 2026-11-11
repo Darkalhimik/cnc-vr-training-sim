@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { TeleportTarget } from "@react-three/xr";
 import * as THREE from "three";
 import type { Rect, Room, Station, Wall, WorldLayout } from "@/entities/world/layout";
+import type { FloorPress } from "@/features/xr/locomotion";
 import { buildFurniture } from "./furniture";
 import { StaticBuilder } from "./static-builder";
 import { WallClock } from "./wall-clock";
@@ -24,7 +24,7 @@ import {
  * signage, furniture and soft contact shadows. Primitives and painted
  * textures only — nothing to rebuild when a bay is added — merged into one
  * mesh per material, because a headset renders the room twice a frame.
- * Only the floors stay separate: they are what the teleport arc lands on.
+ * Only the floors stay separate: in the glasses a press on them teleports.
  */
 const WALL_T = 0.2;
 const noRaycast = () => {};
@@ -354,9 +354,39 @@ function Floor({ room }: { room: Room }) {
   );
 }
 
+/**
+ * In the glasses, the walls stop the controller's ray: without them it would
+ * pass through (the scenery takes no rays) and find the floor of the next
+ * room, and a press there would teleport through the wall. Invisible slabs
+ * along the walls' colliding stretches — the doorways are left open.
+ */
+function RayWalls({ layout }: { layout: WorldLayout }) {
+  const height = Math.max(...layout.rooms.map((r) => r.height));
+  return (
+    <group>
+      {layout.colliders.walls.map(([a, b], i) => {
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (length < 0.01) return null;
+        return (
+          <mesh
+            key={i}
+            position={[(a[0] + b[0]) / 2, height / 2, (a[1] + b[1]) / 2]}
+            rotation={[0, -Math.atan2(b[1] - a[1], b[0] - a[0]), 0]}
+            pointerEvents="auto"
+          >
+            <boxGeometry args={[length, height, WALL_T]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 /** Everything that is not a station: the rooms and what is in and on them.
- *  With `onTeleport`, the floors are where a headset's teleport arc lands. */
-export function Rooms({ layout, onTeleport }: { layout: WorldLayout; onTeleport?: (point: THREE.Vector3) => void }) {
+ *  With `floor`, a press on a floor in the glasses teleports there
+ *  (useFloorTeleport), and the walls stop the ray. */
+export function Rooms({ layout, floor }: { layout: WorldLayout; floor?: FloorPress }) {
   const built = useMemo(() => {
     const { meshes, specs } = scenery(layout);
     const atlas = signAtlas(specs);
@@ -379,14 +409,15 @@ export function Rooms({ layout, onTeleport }: { layout: WorldLayout; onTeleport?
   return (
     <group>
       {layout.rooms.map((r) =>
-        onTeleport ? (
-          <TeleportTarget key={r.id} onTeleport={onTeleport}>
+        floor ? (
+          <group key={r.id} {...floor}>
             <Floor room={r} />
-          </TeleportTarget>
+          </group>
         ) : (
           <Floor key={r.id} room={r} />
         ),
       )}
+      {floor && <RayWalls layout={layout} />}
       {built.meshes.map((m) => (
         <mesh
           key={m.key}

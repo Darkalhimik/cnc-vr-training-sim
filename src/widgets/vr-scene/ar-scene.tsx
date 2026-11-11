@@ -10,7 +10,7 @@ import { insideBox } from "@/entities/world/layout";
 import { useSessionStore } from "@/features/session/session-store";
 import { useWorldStore } from "@/features/world/world-store";
 import { HapticsBridge, pulse } from "@/features/xr/haptics";
-import { StickTeleport, XrLocomotion, slideAroundBox, type FloorBox } from "@/features/xr/locomotion";
+import { StickTeleport, XrLocomotion, slideAroundBox, useFloorTeleport, type FloorBox } from "@/features/xr/locomotion";
 import { AR_STAND, AR_STAND_IN_MACHINE, getPreviewCamera, getSceneGroupPosition } from "./layout";
 import { MachineStation } from "./machine-station";
 import { WristMenu } from "./wrist-menu";
@@ -175,6 +175,7 @@ function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
   }, [arMachineId, machineScale, machineYaw, pose]);
   const slide = useMemo(() => slideAroundBox(() => box), [box]);
   const canStand = useMemo(() => (p: [number, number]) => !insideBox(box, p), [box]);
+  const { floor, marker } = useFloorTeleport(originRef, canStand);
 
   // Only the UMC-500 has a working model and control today; the others are
   // listed so the menu reads the same when they arrive.
@@ -197,6 +198,18 @@ function ArWorld({ mode, gameMode }: { mode: ArMode; gameMode: GameMode }) {
         )}
       </XROrigin>
       {glasses && <XrLocomotion originRef={originRef} slide={slide} />}
+      {/* The trainee's own floor, invisible: pressing on it teleports there
+          (in the glasses, Teleport mode). The machine and the boards are
+          nearer along any ray aimed at them, so those presses press them. */}
+      {glasses && floor && (
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} {...floor}>
+            <planeGeometry args={[80, 80]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+          </mesh>
+          {marker}
+        </>
+      )}
 
       <group position={pose.position} rotation={[0, pose.yaw, 0]}>
         <MachineStation gameMode={gameMode} boards adjustable interactive stand={AR_STAND_IN_MACHINE} />

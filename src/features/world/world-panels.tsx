@@ -63,10 +63,11 @@ function Controls({ device }: { device: DeviceMode }) {
         ]
       : [
           ["Walk", "your own room moves you, in every movement mode"],
-          ["Stick forward", "aim a teleport, let go to jump (Teleport mode)"],
+          ["Trigger on the floor", "jump there (Teleport mode)"],
+          ["Stick forward", "aim a teleport arc, let go to jump (Teleport mode)"],
           ["Left stick", "walk (Joystick mode)"],
           ["Right stick", "sideways: turn in steps (Teleport and Joystick)"],
-          ["Trigger / pinch", "press buttons, keys and levers"],
+          ["Trigger / pinch", "on the machine or a board: press buttons, keys and levers"],
         ];
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -302,7 +303,8 @@ function MovementSwitch() {
   const movement = useSessionStore((s) => s.xrMovement);
   const setMovement = useSessionStore((s) => s.setXrMovement);
   const help: Record<XrMovement, string> = {
-    teleport: "Push a stick forward, aim the arc at the floor, let go to jump there. The right stick sideways turns.",
+    teleport:
+      "Point at the floor and press the trigger (or pinch) to jump there — or push a stick forward, aim the arc, let go. Pointed at the machine, the press presses the machine. The right stick sideways turns.",
     walk: "Only your own steps move you. Turn by turning round.",
     joystick: "The left stick walks you, the right stick turns.",
   };

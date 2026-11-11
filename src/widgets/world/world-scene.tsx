@@ -6,7 +6,7 @@ import { XR, type createXRStore } from "@react-three/xr";
 import type * as THREE from "three";
 import type { GameMode } from "@/entities/machine/machine-types";
 import { isBlocked, roomAt, type Station } from "@/entities/world/layout";
-import { StickTeleport } from "@/features/xr/locomotion";
+import { StickTeleport, useFloorTeleport } from "@/features/xr/locomotion";
 import { useSessionStore } from "@/features/session/session-store";
 import { useWarehouseStore } from "@/features/warehouse/warehouse-api";
 import { WORLD, useWorldStore } from "@/features/world/world-store";
@@ -132,6 +132,17 @@ function ToolStation({ station, desktop }: { station: Station; desktop: boolean 
  *  machines and furniture. */
 const canStandInWorkshop = (p: [number, number]) => !!roomAt(WORLD, p) && !isBlocked(WORLD, p);
 
+/** The rooms in the glasses: a press on a floor teleports there. */
+function XrRooms({ originRef }: { originRef: React.RefObject<THREE.Group | null> }) {
+  const { floor, marker } = useFloorTeleport(originRef, canStandInWorkshop);
+  return (
+    <>
+      <Rooms layout={WORLD} floor={floor} />
+      {marker}
+    </>
+  );
+}
+
 /**
  * The workshop: rooms, the machines in their bays with their tool carts, the
  * warehouse, the tool crib, the level terminal and the progress wall. On a
@@ -161,7 +172,7 @@ export function WorldScene({ device, gameMode, xrStore }: Props) {
           <WorldLighting />
 
           <Suspense fallback={null}>
-            <Rooms layout={WORLD} />
+            {desktop ? <Rooms layout={WORLD} /> : <XrRooms originRef={originRef} />}
 
             {stations.map((s) => {
               switch (s.kind) {

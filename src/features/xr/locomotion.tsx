@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { createPortal, useFrame, useThree } from "@react-three/fiber";
-import { XRSpace, useXRInputSourceState, type XRControllerState } from "@react-three/xr";
+import { createPortal, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { XRSpace, useXR, useXRInputSourceState, type XRControllerState } from "@react-three/xr";
 import * as THREE from "three";
 import { pulse } from "./haptics";
 import { slideAround, type FloorBox, type Vec2 } from "@/entities/world/layout";
@@ -22,11 +22,12 @@ const STICK = "xr-standard-thumbstick";
 /**
  * Getting about in VR or AR glasses beyond the trainee's own steps, as the
  * movement setting says (session-store XrMovement). Walking in the real room
- * always works. Teleport: a stick pushed forward aims an arc, let go to land
- * (StickTeleport); the right stick sideways snap-turns. Joystick: the left
- * stick walks where the head looks, sliding along what `slide` says is in
- * the way, the right stick snap-turns. Walk: nothing but the trainee's feet.
- * The trigger is never movement: it always presses what the ray points at.
+ * always works. Teleport: point at the floor and press (useFloorTeleport),
+ * or push a stick forward to aim an arc and let go (StickTeleport); the
+ * right stick sideways snap-turns. Joystick: the left stick walks where the
+ * head looks, sliding along what `slide` says is in the way, the right stick
+ * snap-turns. Walk: nothing but the trainee's feet. Aimed at the machine,
+ * the trigger always presses it.
  */
 export function XrLocomotion({ originRef, slide }: { originRef: React.RefObject<THREE.Group | null>; slide: SlideFn }) {
   const left = useXRInputSourceState("controller", "left");
@@ -78,6 +79,90 @@ export function teleportTo(origin: THREE.Group | null, point: THREE.Vector3, cam
   const head = camera.getWorldPosition(new THREE.Vector3());
   origin.position.x += point.x - head.x;
   origin.position.z += point.z - head.z;
+}
+
+/** Event props for floor meshes that take a press as a teleport. */
+export type FloorPress = {
+  onPointerMove: (event: ThreeEvent<PointerEvent>) => void;
+  onPointerOut: () => void;
+  onClick: (event: ThreeEvent<MouseEvent>) => void;
+};
+
+/** A ray or a far pinch; not a hand's touch or a controller's grab. */
+function isRay(event: object) {
+  try {
+    const type = (event as { pointerType?: string }).pointerType;
+    return type !== "touch" && type !== "grab";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Teleport by pointing at the floor and pressing — the trigger or a pinch,
+ * no stick needed (Teleport mode, in a session). The floor is a target for
+ * the controller's ordinary ray, and the ray stops at the nearest thing it
+ * meets: aimed at the machine, its pendant, a board or a tool, that is what
+ * the press presses; only where the floor is the nearest thing does the
+ * press teleport. A ring shows where you would land, green where you can
+ * stand and red where you cannot (inside a machine, a wall, off the floor).
+ *
+ * Call inside the canvas; spread `floor` on the floor meshes and render
+ * `marker` once.
+ */
+export function useFloorTeleport(
+  originRef: React.RefObject<THREE.Group | null>,
+  canStand: (p: Vec2) => boolean,
+): { floor: FloorPress | undefined; marker: React.ReactNode } {
+  const session = useXR((s) => s.session);
+  const movement = useSessionStore((s) => s.xrMovement);
+  const camera = useThree((s) => s.camera);
+  const ring = useMemo(() => {
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.2, 0.26, 40).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: ARC_OK, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    mesh.visible = false;
+    mesh.renderOrder = 10;
+    mesh.raycast = () => {};
+    return mesh;
+  }, []);
+  useEffect(
+    () => () => {
+      ring.geometry.dispose();
+      (ring.material as THREE.Material).dispose();
+    },
+    [ring],
+  );
+  const active = !!session && movement === "teleport";
+  useEffect(() => {
+    if (!active) ring.visible = false;
+  }, [active, ring]);
+
+  const floor: FloorPress | undefined = active
+    ? {
+        onPointerMove: (event) => {
+          if (!isRay(event)) return;
+          const ok = canStand([event.point.x, event.point.z]);
+          (ring.material as THREE.MeshBasicMaterial).color.copy(ok ? ARC_OK : ARC_NO);
+          ring.position.set(event.point.x, 0.01, event.point.z);
+          ring.visible = true;
+        },
+        onPointerOut: () => {
+          ring.visible = false;
+        },
+        onClick: (event) => {
+          if (!isRay(event)) return;
+          event.stopPropagation();
+          if (!canStand([event.point.x, event.point.z])) return;
+          teleportTo(originRef.current, event.point, camera);
+          ring.visible = false;
+          pulse("detent");
+        },
+      }
+    : undefined;
+
+  return { floor, marker: <primitive object={ring} /> };
 }
 
 /** The arc: thrown from the controller at this speed, m/s, under gravity. */
