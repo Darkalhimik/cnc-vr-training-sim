@@ -126,6 +126,43 @@ export const levelProgress = pgTable(
 );
 
 /**
+ * Every attempt at a level, one row each — finished or given up — with its
+ * time and score; level_progress keeps the best of them. A task's score is
+ * worked out on the server from the measured volumes kept here. The action
+ * log is the attempt itself: its starting machine and every input the
+ * machine's reducer was given, gzipped JSON (entities/machine/action-log.ts),
+ * enough to play the attempt again exactly.
+ */
+export const levelAttempt = pgTable(
+  "level_attempt",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    machineId: text("machineId").notNull(),
+    levelId: text("levelId").notNull(),
+    startedAt: timestamp("startedAt").notNull(),
+    /** Start to finish (or to giving up), whole seconds. */
+    seconds: integer("seconds").notNull(),
+    completed: boolean("completed").notNull(),
+    /** The machine crashed during the attempt (a task's score is capped). */
+    crashed: boolean("crashed").notNull().default(false),
+    /** 0–100, finished tasks only; from the volumes below. */
+    score: integer("score"),
+    /** The measured part, mm³: material left on, over-cut, what the drawing removes. */
+    leftMm3: real("leftMm3"),
+    overcutMm3: real("overcutMm3"),
+    toRemoveMm3: real("toRemoveMm3"),
+    /** gzip of the attempt's action log, JSON. */
+    actionLog: bytea("actionLog"),
+    logBytes: integer("logBytes"),
+    createdAt: created(),
+  },
+  (t) => [index("attempt_user_level_idx").on(t.userId, t.levelId, t.startedAt)],
+);
+
+/**
  * A machined part on a shelf in the warehouse. `field` is the gzip of the
  * stock's distance field at the voxel it was cut with; `preview` the same
  * field resampled coarse, for the shelf. Both are meshed in the browser.

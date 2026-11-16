@@ -29,6 +29,7 @@ const files = [
   "src/features/part-development/program-check.ts",
   "src/features/part-development/setup.ts",
   "src/features/part-development/setup-shortcuts.ts",
+  "src/entities/machine/action-log.ts",
   "src/entities/world/navigation.ts",
   "src/features/cnc-tutorial/tutorial-engine.ts",
   "src/features/cnc-tutorial/steps/index.ts",
@@ -937,6 +938,77 @@ scenario("23. Shortcuts make a part: Set up all from a cold machine, Run it, and
   assert.equal(m.program, "idle", `still ${m.program} after ${frames} frames`);
   assert.deepEqual(m.alarms, []);
   assert.ok(steps().every((s) => s.done), "every step done, the part run to M30");
+});
+
+scenario("24. An attempt is reproduced exactly from its action log: replayed through the reducer it ends in the same machine state", () => {
+  const AL = require(join(out, "entities/machine/action-log.js"));
+  const key = (k) => store().pressKey(k);
+  const op = (part, sign) => store().operate(part, sign);
+  // Timers are inputs to the reducer like a key: fire them through the store.
+  const fire = (timer) => store().runAction({ type: "timer", timer });
+  const d = design.SAMPLE_DESIGN;
+  const { text } = cam.generateProgram(d);
+
+  store().reset();
+  AL.beginActionLog(store().machine);
+
+  // A cold start, the boot and the zero return included.
+  op("air_valve");
+  op("main_switch");
+  op("power_on");
+  fire("boot");
+  op("estop");
+  op("reset");
+  if (store().machine.doorOpen) op("door");
+  op("power_up");
+  for (let i = 0; i < 10 && store().machine.homingStage !== null; i++) fire("homing");
+  assert.ok(store().machine.homed, "homed");
+
+  // The job: program off the stick, a blank, the WIPS routines.
+  store().writeUsb("O01001", text);
+  key("LIST_PROGRAM");
+  key("RIGHT");
+  while (L.listFiles(store().machine)[store().machine.offsetCursor.row] !== "O01001") key("DOWN");
+  key("SELECT_PROGRAM");
+  op("door");
+  store().setStock({ size: [d.stock.x, d.stock.y, d.stock.z], material: d.stock.material });
+  op("door");
+  key("MDI");
+  key("TOOL_OFFSET_MEASURE");
+  op("cycle_start");
+  assert.equal(play(), "idle");
+  key("OFFSET");
+  if (store().machine.offsetTab !== "work") key("OFFSET");
+  key("F3");
+  op("cycle_start");
+  assert.equal(play(), "idle");
+  // A shortcut's direct write, then part of the program, a feed hold, RESET.
+  const tools = { ...store().machine.tools };
+  for (const t of TOOL_LIBRARY) tools[t.number] = { ...tools[t.number], length: t.length, lengthWear: 0, diameter: t.diameter };
+  store().setOffsets({ tools });
+  key("MEMORY");
+  op("cycle_start");
+  play(4);
+  op("feed_hold");
+  key("RESET");
+  // And some hand jogging.
+  op("hand_jog");
+  op("axis_x");
+  for (let i = 0; i < 3; i++) op("handwheel", -1);
+
+  // Stored as JSON, as the server keeps it.
+  const log = JSON.parse(JSON.stringify(AL.endActionLog()));
+  const kinds = new Set(log.entries.map((e) => ("a" in e ? e.a.type : "set")));
+  for (const kind of ["operate", "key", "timer", "stock", "runProgress", "runEvent", "set"]) assert.ok(kinds.has(kind), `the log has ${kind} entries`);
+  assert.ok(log.entries.every((e, i) => i === 0 || e.t >= log.entries[i - 1].t), "times run forward");
+  assert.deepEqual(AL.replayActionLog(log), JSON.parse(JSON.stringify(store().machine)));
+  // A log that is not replayed in full does not end there.
+  const cut = { ...log, entries: log.entries.slice(0, -5) };
+  assert.notDeepEqual(AL.replayActionLog(cut), JSON.parse(JSON.stringify(store().machine)));
+  assert.equal(AL.endActionLog(), null, "ended once");
+  const json = JSON.stringify(log);
+  const gz = require("node:zlib").gzipSync(json).length;
+  console.log(`      log: ${log.entries.length} entries, ${(json.length / 1024).toFixed(0)} KB JSON, ${(gz / 1024).toFixed(1)} KB gzip`);
 });
 
 rmSync(temp, { recursive: true, force: true });

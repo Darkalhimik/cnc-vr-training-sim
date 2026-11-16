@@ -181,6 +181,21 @@ export function unlockedLevels(machineId: MachineId, completed: ReadonlySet<stri
   return open;
 }
 
+/** The most a task's part scores when the attempt crashed the machine. */
+export const CRASH_SCORE_CAP = 50;
+
+/**
+ * A task's score, 0–100, from the measured part: material left on counts
+ * once, an over-cut twice (material can still come off, but not go back on),
+ * against what the drawing removes from the blank (at least 50 mm³, so a
+ * light job is not all-or-nothing). A crash caps it. The client measures,
+ * the server scores with this same function from the measured volumes.
+ */
+export function taskScore(m: { leftMm3: number; overcutMm3: number; toRemoveMm3: number }, crashed = false): number {
+  const raw = Math.round(100 * Math.max(0, Math.min(1, 1 - (m.leftMm3 + 2 * m.overcutMm3) / Math.max(m.toRemoveMm3, 50))));
+  return crashed ? Math.min(raw, CRASH_SCORE_CAP) : raw;
+}
+
 /** Stars for a finished level: full marks for par or better, then by score. */
 export function starsFor(level: LevelInfo, seconds: number, score: number | null): number {
   if (level.kind === "task") {

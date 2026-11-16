@@ -81,9 +81,11 @@ export async function currentUser() {
 async function adoptGuest(guestId: string, userId: string) {
   if (guestId === userId) return;
   const db = getDb();
-  const { part, levelProgress } = schema;
+  const { part, levelProgress, levelAttempt } = schema;
   await db.transaction(async (tx) => {
     await tx.update(part).set({ userId }).where(eq(part.userId, guestId));
+    // Every attempt the guest made is the account's history too.
+    await tx.update(levelAttempt).set({ userId }).where(eq(levelAttempt.userId, guestId));
     const own = await tx
       .select({ levelId: levelProgress.levelId })
       .from(levelProgress)
