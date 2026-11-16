@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 import type { MachineId } from "@/entities/catalog/machines";
+import type { ActionLog } from "@/entities/machine/action-log";
 import { levelsFor, unlockedLevels } from "@/entities/catalog/levels";
 import { ensureSession, useSession } from "@/shared/lib/auth-client";
 
@@ -76,25 +77,56 @@ export function useProgress(machineId: MachineId) {
   }, [entry, machineId]);
 }
 
+/** gzip, then base64: how an action log travels. Null where the browser
+ *  cannot compress — the attempt is still reported, without its log. */
+async function gzipBase64(text: string): Promise<string | null> {
+  if (typeof CompressionStream === "undefined") return null;
+  try {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+  } catch {
+    return null;
+  }
+}
+
+export type AttemptReport = {
+  levelId: string;
+  completed: boolean;
+  seconds: number;
+  /** When the attempt started. */
+  startedAt: Date;
+  crashed?: boolean;
+  /** A task's measured part; the server scores it. */
+  measurement?: { leftMm3: number; overcutMm3: number; toRemoveMm3: number };
+  /** Everything the machine was given during the attempt (action-log.ts). */
+  log?: ActionLog | null;
+};
+
 /**
- * Report an attempt. Signs the visitor in as a guest if nobody is, so a
- * first finished level is never lost. Returns the stars the server gave.
+ * Report an attempt, finished or given up. Signs the visitor in as a guest
+ * if nobody is, so a first finished level is never lost. Returns the stars
+ * the server gave, and a task's score as the server worked it out.
  */
 export async function recordAttempt(
   machineId: MachineId,
-  attempt: { levelId: string; completed: boolean; seconds?: number; score?: number },
-): Promise<{ stars: number } | { error: string }> {
+  attempt: AttemptReport,
+): Promise<{ stars: number; score: number | null } | { error: string }> {
   if (!(await ensureSession())) return { error: "Could not start a guest session." };
+  const { log, startedAt, ...rest } = attempt;
+  const packed = log ? await gzipBase64(JSON.stringify(log)) : null;
   const response = await fetch("/api/progress", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(attempt),
+    body: JSON.stringify({ ...rest, startedAt: startedAt.toISOString(), ...(packed ? { log: packed } : {}) }),
   }).catch(() => null);
   if (!response?.ok) {
     const body = await response?.json().catch(() => null);
     return { error: body?.error ?? "Progress could not be saved." };
   }
-  const body = (await response.json()) as { progress: LevelProgress; stars: number };
+  const body = (await response.json()) as { progress: LevelProgress; stars: number; score: number | null };
   useProgressStore.getState().upsert(machineId, body.progress);
-  return { stars: body.stars };
+  return { stars: body.stars, score: body.score ?? null };
 }

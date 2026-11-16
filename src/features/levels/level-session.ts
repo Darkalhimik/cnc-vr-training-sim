@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import { create } from "zustand";
-import { levelById, type LevelInfo } from "@/entities/catalog/levels";
+import { levelById, taskScore, type LevelInfo } from "@/entities/catalog/levels";
+import { beginActionLog, endActionLog } from "@/entities/machine/action-log";
 import { MACHINES } from "@/entities/catalog/machines";
 import { useMachineStore } from "@/entities/machine/machine-store";
 import type { GameMode } from "@/entities/machine/machine-types";
@@ -40,7 +41,9 @@ type LevelSession = {
   freeplayJob: { design: PartDesign; program: string; edited: boolean } | null;
   error: string | null;
 
-  enter: (mode: GameMode, levelId: string | null) => void;
+  /** Start a mode — free play, or a level from its first state. A task can
+   *  be given the trainee's own program to start with. */
+  enter: (mode: GameMode, levelId: string | null, program?: string) => void;
   /** Start the current level again from its first state. */
   restart: () => void;
   /** A tutorial reached its last step. */
@@ -51,6 +54,27 @@ type LevelSession = {
 
 const elapsed = (since: number) => Math.round((Date.now() - since) / 1000);
 
+const crashedNow = () => useMachineStore.getState().machine.alarms.some((a) => a.code === "crash");
+
+/**
+ * A level left before it was finished — restarted, another level picked, or
+ * back to free play — is an attempt too, recorded as given up with its time
+ * and action log. One where nothing at all happened (opening a level and
+ * leaving it at once, or React mounting twice) is not.
+ */
+function recordGivenUp(level: LevelInfo, startedAt: number) {
+  const log = endActionLog();
+  if (!log || log.entries.length === 0) return;
+  void recordAttempt(level.machineId, {
+    levelId: level.id,
+    completed: false,
+    seconds: elapsed(startedAt),
+    startedAt: new Date(startedAt),
+    crashed: crashedNow(),
+    log,
+  });
+}
+
 export const useLevelSession = create<LevelSession>((set, get) => ({
   mode: null,
   level: null,
@@ -60,8 +84,11 @@ export const useLevelSession = create<LevelSession>((set, get) => ({
   freeplayJob: null,
   error: null,
 
-  enter: (mode, levelId) => {
+  enter: (mode, levelId, program) => {
     const previous = get();
+    // The attempt in progress ends here: given up, unless it was finished.
+    if (previous.level && previous.phase === "playing") recordGivenUp(previous.level, previous.startedAt);
+    else endActionLog();
     const level = mode === "freeplay" ? null : levelById(levelId ?? "");
     // Free play's job is put aside when a level takes the job store over, and
     // given back when the trainee returns to free play.
@@ -90,18 +117,19 @@ export const useLevelSession = create<LevelSession>((set, get) => ({
     } else {
       const task = TASKS[level.id];
       if (!task) return set({ error: "This task is not available yet." });
-      prepareTask(task);
+      prepareTask(task, program);
     }
+    // The attempt starts with the machine as the level hands it over; from
+    // here every input to it is logged, to be sent with the attempt.
+    beginActionLog(useMachineStore.getState().machine);
   },
 
   restart: () => {
     const { mode, level } = get();
     if (!mode) return;
     // A task starts again on a fresh blank, but with the trainee's program.
-    const program = useJobStore.getState().program;
-    get().enter(mode, level?.id ?? null);
     const task = level && TASKS[level.id];
-    if (task) prepareTask(task, program);
+    get().enter(mode, level?.id ?? null, task ? useJobStore.getState().program : undefined);
   },
 
   completeTutorial: async () => {
@@ -109,7 +137,14 @@ export const useLevelSession = create<LevelSession>((set, get) => ({
     if (!level || phase !== "playing") return;
     const seconds = elapsed(startedAt);
     set({ phase: "complete", result: { seconds, stars: null } });
-    const reply = await recordAttempt(level.machineId, { levelId: level.id, completed: true, seconds });
+    const reply = await recordAttempt(level.machineId, {
+      levelId: level.id,
+      completed: true,
+      seconds,
+      startedAt: new Date(startedAt),
+      crashed: crashedNow(),
+      log: endActionLog(),
+    });
     if ("error" in reply) return set({ error: reply.error });
     set((s) => ({ result: s.result && { ...s.result, stars: reply.stars } }));
   },
@@ -125,13 +160,22 @@ export const useLevelSession = create<LevelSession>((set, get) => ({
       const reference = await referenceField(task.design, removal.voxel);
       const { x, y, z } = task.design.stock;
       const m = measure(actual, reference, task.tolerance, x * y * z);
-      const crashed = useMachineStore.getState().machine.alarms.some((a) => a.code === "crash");
-      const score = crashed ? Math.min(m.score, 50) : m.score;
+      const crashed = crashedNow();
+      // Shown at once; the server scores the same volumes with the same rule.
+      const score = taskScore(m, crashed);
       const seconds = elapsed(startedAt);
       set({ phase: "complete", result: { seconds, stars: null, score, measurement: m, crashed } });
-      const reply = await recordAttempt(level.machineId, { levelId: level.id, completed: true, seconds, score });
+      const reply = await recordAttempt(level.machineId, {
+        levelId: level.id,
+        completed: true,
+        seconds,
+        startedAt: new Date(startedAt),
+        crashed,
+        measurement: { leftMm3: m.leftMm3, overcutMm3: m.overcutMm3, toRemoveMm3: m.toRemoveMm3 },
+        log: endActionLog(),
+      });
       if ("error" in reply) return set({ error: reply.error });
-      set((s) => ({ result: s.result && { ...s.result, stars: reply.stars } }));
+      set((s) => ({ result: s.result && { ...s.result, stars: reply.stars, score: reply.score ?? s.result.score } }));
     } catch (error) {
       set({ phase: "playing", error: error instanceof Error ? error.message : String(error) });
     }

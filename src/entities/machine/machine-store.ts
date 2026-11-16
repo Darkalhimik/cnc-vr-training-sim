@@ -5,6 +5,7 @@ import type { MachinePartId } from "./machine-parts";
 import { initialMachineState, readyMachineState, type MachineState, type StockOnMachine } from "./machine-types";
 import { type MachineAction, type Outcome, type RunAction, type TimerKind, reduce, timerDelay } from "./machine-logic";
 import { type ActiveRun, runWarning, startRun } from "./program-run";
+import { logAction, logSet } from "./action-log";
 
 export { initialMachineState };
 export type { ActiveRun };
@@ -59,7 +60,16 @@ function clearTimers(kinds?: TimerKind[]) {
 }
 
 export const useMachineStore = create<MachineStore>((set, get) => {
+  /** A change made outside the reducer: logged as the fields it sets, so an
+   *  attempt's action log replays it too (action-log.ts). */
+  const setMachine = (machine: MachineState, message: string | null) => {
+    logSet(get().machine, machine);
+    set({ machine, message });
+  };
+
   const dispatch = (action: MachineAction): Outcome => {
+    // Every input to the reducer — keys, parts, timers, a program's reports.
+    logAction(action);
     const before = get().machine;
     const outcome = reduce(before, action);
     const { next, rejected, notice, start, cancel, run } = outcome;
@@ -107,30 +117,30 @@ export const useMachineStore = create<MachineStore>((set, get) => {
         programs: { ...machine.programs, [name]: text },
         activeProgram: select ? name : machine.activeProgram,
       };
-      set({ machine: next, message: `${name} loaded${select ? " and selected" : ""}.` });
+      setMachine(next, `${name} loaded${select ? " and selected" : ""}.`);
       return { next };
     },
     writeUsb: (name, text) => {
       const { machine } = get();
       if (!machine.usb || machine.usb[name] === text) return;
-      set({ machine: { ...machine, usb: { ...machine.usb, [name]: text } } });
+      setMachine({ ...machine, usb: { ...machine.usb, [name]: text } }, get().message);
     },
-    setOffsets: (patch) => set({ machine: { ...get().machine, ...patch } }),
-    setMagazine: (patch) => set({ machine: { ...get().machine, ...patch }, message: "Tools loaded. Measure the new ones before cutting." }),
+    setOffsets: (patch) => setMachine({ ...get().machine, ...patch }, get().message),
+    setMagazine: (patch) => setMachine({ ...get().machine, ...patch }, "Tools loaded. Measure the new ones before cutting."),
     reset: () => {
       clearTimers();
       activeRun = null;
-      set({ machine: initialMachineState, message: null });
+      setMachine(initialMachineState, null);
     },
     load: (state) => {
       clearTimers();
       activeRun = null;
-      set({ machine: state, message: null });
+      setMachine(state, null);
     },
     makeReady: () => {
       clearTimers();
       activeRun = null;
-      set({ machine: { ...readyMachineState, stock: get().machine.stock }, message: null });
+      setMachine({ ...readyMachineState, stock: get().machine.stock }, null);
     },
   };
 });

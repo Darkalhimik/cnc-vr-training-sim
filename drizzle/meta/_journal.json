@@ -15,6 +15,13 @@
       "when": 1793303215706,
       "tag": "0001_tool_loadout",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794864985192,
+      "tag": "0002_level_attempt",
+      "breakpoints": true
     }
   ]
 }

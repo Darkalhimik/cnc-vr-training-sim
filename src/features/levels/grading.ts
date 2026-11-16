@@ -5,6 +5,7 @@
  * tolerance around the reference surface forgives the difference between two
  * correct toolpaths.
  */
+import { taskScore } from "@/entities/catalog/levels";
 import { toolInStock } from "@/entities/machine/kinematics";
 import { interpret } from "@/entities/nc";
 import { generateProgram } from "@/entities/part/cam";
@@ -87,6 +88,5 @@ export function measure(actual: PartField, reference: PartField, tolerance: numb
   const leftMm3 = left * cell;
   const overcutMm3 = over * cell;
   const toRemoveMm3 = Math.max(1, blankMm3 - kept * cell);
-  const score = Math.round(100 * Math.max(0, Math.min(1, 1 - (leftMm3 + 2 * overcutMm3) / Math.max(toRemoveMm3, 50))));
-  return { leftMm3, overcutMm3, toRemoveMm3, score };
+  return { leftMm3, overcutMm3, toRemoveMm3, score: taskScore({ leftMm3, overcutMm3, toRemoveMm3 }) };
 }
